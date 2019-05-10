@@ -3,9 +3,9 @@
 set -eE  # same as: `set -o errexit -o errtrace`
 
 
-function shutdown(){
+function shutdown () {
     shutdown -h now
-
+}
 
 apt-get update
 apt-get -y install git python3-pip
