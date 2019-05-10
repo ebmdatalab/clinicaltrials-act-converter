@@ -8,7 +8,7 @@ function shutdown () {
 }
 
 apt-get update
-apt-get -y install git python3-pip
+apt-get -y install git python3-pip unzip
 
 cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
