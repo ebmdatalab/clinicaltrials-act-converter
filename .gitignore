@@ -10,3 +10,4 @@ __pycache__/
 *pyc
 environment
 db.sqlite3
+clinicaltrials-credentials.json
