@@ -108,7 +108,7 @@ def main(project, bucket, zone, instance_name, wait=True):
     compute = build(
         'compute', 'v1', credentials=credentials, cache_discovery=False)
 
-    instances = list_instances(compute, project, zone)
+    instances = list_instances(compute, project, zone) or []
     for i in instances:
         if i['name'] == instance_name:
             if i['status'] != 'TERMINATED':
