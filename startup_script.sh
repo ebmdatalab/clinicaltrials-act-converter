@@ -27,4 +27,5 @@ echo "Running command"
 python3 load_data.py
 
 # Quit (ensures we don't pay)
-trap shudown EXIT
+trap shutdown EXIT
+trap shutdown ERR
