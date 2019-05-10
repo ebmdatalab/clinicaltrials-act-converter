@@ -67,19 +67,26 @@ def download_and_extract():
     """
     logger.info("Downloading. This takes at least 30 mins on a fast connection!")
     url = 'https://clinicaltrials.gov/AllPublicXML.zip'
-
-    # download and extract
     container = tempfile.mkdtemp(
-        prefix=settings.STORAGE_PREFIX.rstrip(os.sep), dir=settings.WORKING_VOLUME)
-    try:
-        data_file = os.path.join(container, "data.zip")
-        wget_file(data_file, url)
+        prefix=settings.STORAGE_PREFIX.rstrip(os.sep),
+        dir=settings.WORKING_VOLUME)
+    destination_file_name = os.path.join(container, "AllPublicXML.zip")
+
+    # First check if a recent version exists in cloud - this is faster to download!
+    client = StorageClient()
+    bucket = client.get_bucket()
+    blob = bucket.get_blob("clinicaltrials/AllPublicXML.zip")
+    if blob and \
+       blob.updated.strftime("%Y-%m-%d") == date.today().strftime("%Y-%m-%d"):
+        blob.download_to_filename(destination_file_name)
+    else:
+        # download and extract
+        wget_file(destination_file_name, url)
         # Can't "wget|unzip" in a pipe because zipfiles have index at end of file.
-        with contextlib.suppress(OSError):
-            shutil.rmtree(settings.WORKING_DIR)
-        subprocess.check_call(["unzip", "-q", "-o", "-d", settings.WORKING_DIR, data_file])
-    finally:
-        shutil.rmtree(container)
+        upload_to_cloud(destination_file_name, "clinicaltrials/AllPublicXML.zip")
+    subprocess.check_call(
+        ["unzip", "-q", "-o", "-d", settings.WORKING_DIR,
+         destination_file_name])
 
 
 def upload_to_cloud(source_path, target_path):
@@ -88,10 +95,10 @@ def upload_to_cloud(source_path, target_path):
     client = StorageClient()
     bucket = client.get_bucket()
     blob = bucket.blob(
-        source_path,
+        target_path,
         chunk_size=1024*1024
     )
-    with open(target_path, 'rb') as f:
+    with open(source_path, 'rb') as f:
         blob.upload_from_file(f)
 
 
@@ -331,10 +338,7 @@ def convert_to_csv():
     # This is a snapshot of CT.gov at a time when it included FDA
     # regulation metadata
     fda_reg_dict = {}
-    with gzip.open(
-            os.path.join(settings.BASE_DIR,
-                         'frontend', 'management', 'commands',
-                         'fdaaa_regulatory_snapshot.csv.gz'), 'rt') as old_fda_reg:
+    with gzip.open('fdaaa_regulatory_snapshot.csv.gz', 'rt') as old_fda_reg:
         reader = csv.DictReader(old_fda_reg)
         for d in reader:
             fda_reg_dict[d["nct_id"]] = d["is_fda_regulated"]
@@ -592,18 +596,17 @@ def convert_to_csv():
 
 
 def main():
-    with contextlib.suppress(OSError):
-        os.remove(settings.INTERMEDIATE_CSV_PATH)
     download_and_extract()
     convert_to_json()
     upload_to_cloud(
-        "{}{}".format(settings.STORAGE_PREFIX, raw_json_name()),
-        os.path.join(settings.WORKING_DIR, raw_json_name()))
+        os.path.join(settings.WORKING_DIR, raw_json_name()),
+        "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp")
+    )
     convert_to_csv()
     upload_to_cloud(
-        "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv'),
-        os.path.join(settings.WORKING_DIR, raw_json_name()),
-        settings.INTERMEDIATE_CSV_PATH)
+        settings.INTERMEDIATE_CSV_PATH,
+        "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv.tmp'),
+    )
 
 
 if __name__ == "__main__":
