@@ -7,7 +7,6 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 
-
 def list_instances(compute, project, zone):
     result = compute.instances().list(project=project, zone=zone).execute()
     return result['items'] if 'items' in result else None

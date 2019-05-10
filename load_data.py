@@ -32,7 +32,7 @@ import re
 from google.cloud.exceptions import NotFound
 from xml.parsers.expat import ExpatError
 
-import setting
+import settings
 
 
 logging.basicConfig(
@@ -91,7 +91,7 @@ def upload_to_cloud(source_path, target_path):
         source_path,
         chunk_size=1024*1024
     )
-    with open(target_path), 'rb') as f:
+    with open(target_path, 'rb') as f:
         blob.upload_from_file(f)
 
 
@@ -596,11 +596,15 @@ def main():
         os.remove(settings.INTERMEDIATE_CSV_PATH)
     download_and_extract()
     convert_to_json()
-    convert_to_csv()
     upload_to_cloud(
         "{}{}".format(settings.STORAGE_PREFIX, raw_json_name()),
         os.path.join(settings.WORKING_DIR, raw_json_name()))
+    convert_to_csv()
     upload_to_cloud(
         "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv'),
         os.path.join(settings.WORKING_DIR, raw_json_name()),
         settings.INTERMEDIATE_CSV_PATH)
+
+
+if __name__ == "__main__":
+    main()
