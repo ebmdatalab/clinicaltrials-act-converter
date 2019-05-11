@@ -35,6 +35,7 @@ def create_instance(compute, project, zone, name, bucket):
                 'autoDelete': True,
                 'initializeParams': {
                     'sourceImage': source_disk_image,
+                    'diskSizeGb': 20
                 }
             }
         ],
