@@ -188,7 +188,7 @@ def is_covered_intervention(intervention_type_list):
         "Biological",
         "Genetic",
         "Radiation",
-        "Combination Prodcut",
+        "Combination Product",
         "Diagnostic Test",
     ]
     a_set = set(covered_intervention_type)
