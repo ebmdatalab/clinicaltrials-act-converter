@@ -111,8 +111,10 @@ def wait_for_completion(compute, project, zone, instance):
         print(result['status'])
         if result['status'] in completed_states:
             metadata = result['metadata'] and result['metadata']['items']
+            status = None
             if metadata:
-                status = [x['value'] for x in metadata if x['key'] == 'status'][0]
+                status = [x['value'] for x in metadata
+                          if x['key'] == 'status'][0]
             if status == '0':
                 return
             else:
