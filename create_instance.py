@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+
+# Based on https://github.com/GoogleCloudPlatform/python-docs-samples/blob/master/compute/api/create_instance.py
+
+
 import argparse
 import os
 import time
@@ -53,8 +57,7 @@ def create_instance(compute, project, zone, name, bucket):
         'serviceAccounts': [{
             'email': 'default',
             'scopes': [
-                'https://www.googleapis.com/auth/devstorage.read_write',
-                'https://www.googleapis.com/auth/logging.write'
+                'https://www.googleapis.com/auth/cloud-platform'
             ]
         }],
 
