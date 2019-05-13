@@ -16,7 +16,7 @@ def list_instances(compute, project, zone):
     return result['items'] if 'items' in result else None
 
 
-def create_instance(compute, project, zone, name, bucket):
+def create_instance(compute, project, zone, name):
     # Get the latest Debian Jessie image.
     image_response = compute.images().getFromFamily(
         project='debian-cloud', family='debian-9').execute()
@@ -69,9 +69,6 @@ def create_instance(compute, project, zone, name, bucket):
                 # instance upon startup.
                 'key': 'startup-script',
                 'value': startup_script
-            }, {
-                'key': 'bucket',
-                'value': bucket
             }]
         }
     }
@@ -125,7 +122,7 @@ def wait_for_completion(compute, project, zone, instance):
         time.sleep(5)
 
 
-def main(project, bucket, zone, instance_name, wait=True):
+def main(project, zone, instance_name, wait=True):
     credentials = service_account.Credentials.from_service_account_file(
         os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'])
     compute = build(
@@ -143,7 +140,7 @@ def main(project, bucket, zone, instance_name, wait=True):
 
     print('Creating instance.')
 
-    operation = create_instance(compute, project, zone, instance_name, bucket)
+    operation = create_instance(compute, project, zone, instance_name)
     wait_for_operation(compute, project, zone, operation['name'])
     if wait:
         wait_for_completion(compute, project, zone, instance_name)
@@ -155,8 +152,6 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('project_id', help='Your Google Cloud project ID.')
     parser.add_argument(
-        'bucket_name', help='Your Google Cloud Storage bucket name.')
-    parser.add_argument(
         '--zone',
         default='europe-west2-a',
         help='Compute Engine zone to deploy to.')
@@ -165,4 +160,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    main(args.project_id, args.bucket_name, args.zone, args.name)
+    main(args.project_id, args.zone, args.name)
