@@ -630,5 +630,5 @@ def main(local_only=False):
 
 
 if __name__ == "__main__":
-    local_only = sys.argv and sys.argv[1] == 'local'
+    local_only = len(sys.argv) > 1 and sys.argv[1] == 'local'
     main(local_only)
