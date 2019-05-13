@@ -1,4 +1,4 @@
-fdaa# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import logging
 import sys
 import traceback
