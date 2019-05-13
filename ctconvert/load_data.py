@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+fdaa# -*- coding: utf-8 -*-
 import logging
 import sys
 import traceback
@@ -89,7 +89,7 @@ def download_and_extract():
          destination_file_name])
 
 
-def upload_to_cloud(source_path, target_path):
+def upload_to_cloud(source_path, target_path, make_public=False):
     # XXX we should periodically delete old ones of these
     logger.info("Uploading to cloud")
     client = StorageClient()
@@ -100,6 +100,8 @@ def upload_to_cloud(source_path, target_path):
     )
     with open(source_path, 'rb') as f:
         blob.upload_from_file(f)
+    if make_public:
+        blob.make_public()
 
 
 def notify_slack(message):
@@ -339,7 +341,11 @@ def convert_to_csv():
     # This is a snapshot of CT.gov at a time when it included FDA
     # regulation metadata
     fda_reg_dict = {}
-    with gzip.open('fdaaa_regulatory_snapshot.csv.gz', 'rt') as old_fda_reg:
+    snapshot = gzip.open(
+        os.path.join(
+            os.path.dirname(__file__), 'fdaaa_regulatory_snapshot.csv.gz'), 'rt')
+
+    with snapshot as old_fda_reg:
         reader = csv.DictReader(old_fda_reg)
         for d in reader:
             fda_reg_dict[d["nct_id"]] = d["is_fda_regulated"]
@@ -607,6 +613,7 @@ def main():
     upload_to_cloud(
         settings.INTERMEDIATE_CSV_PATH,
         "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv.tmp'),
+        make_public=True
     )
 
 

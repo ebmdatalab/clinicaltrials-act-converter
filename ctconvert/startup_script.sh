@@ -13,6 +13,11 @@ function shutdown () {
 }
 
 trap shutdown ERR
+gcloud compute instances add-metadata $INSTANCE --zone=$ZONE --metadata status=0
+sudo shutdown -h now
+
+
+ls -l /qweasd
 
 apt-get update
 apt-get -y install git python3-pip unzip
