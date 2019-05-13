@@ -61,9 +61,12 @@ def wget_file(target, url):
     subprocess.check_call(["wget", "-q", "-O", target, url])
 
 
-def download_and_extract():
-    """Clean up from past runs, then download into a temp location and move the
-    result into place.
+def download_and_extract(local_only):
+    """Download zipfile into a temp location, back it up in Cloud Storage,
+    and unzip to WORKING_DIR.
+
+    If there is a copy from today in Cloud Storage, download from
+    there instead (the download from CT.gov is very slow)
     """
     logger.info("Downloading. This takes at least 30 mins on a fast connection!")
     url = 'https://clinicaltrials.gov/AllPublicXML.zip'
@@ -73,17 +76,23 @@ def download_and_extract():
     destination_file_name = os.path.join(container, "AllPublicXML.zip")
 
     # First check if a recent version exists in cloud - this is faster to download!
-    client = StorageClient()
-    bucket = client.get_bucket()
-    blob = bucket.get_blob("clinicaltrials/AllPublicXML.zip")
-    if blob and \
-       blob.updated.strftime("%Y-%m-%d") == date.today().strftime("%Y-%m-%d"):
-        blob.download_to_filename(destination_file_name)
-    else:
-        # download and extract
+    downloaded = False
+    if not local_only:
+        client = StorageClient()
+        bucket = client.get_bucket()
+        blob = bucket.get_blob("clinicaltrials/AllPublicXML.zip")
+        if blob and \
+           blob.updated.strftime("%Y-%m-%d") == date.today().strftime("%Y-%m-%d"):
+            blob.download_to_filename(destination_file_name)
+            downloaded = True
+    if not downloaded:
+        # Download and cache in Google Cloud
         wget_file(destination_file_name, url)
-        # Can't "wget|unzip" in a pipe because zipfiles have index at end of file.
-        upload_to_cloud(destination_file_name, "clinicaltrials/AllPublicXML.zip")
+        if not local_only:
+            upload_to_cloud(
+                destination_file_name,
+                "clinicaltrials/AllPublicXML.zip")
+    # Can't "wget|unzip" in a pipe because zipfiles have index at end of file.
     subprocess.check_call(
         ["unzip", "-q", "-o", "-d", settings.WORKING_DIR,
          destination_file_name])
@@ -602,20 +611,24 @@ def convert_to_csv():
                 writer.writerow(convert_bools_to_ints(td))
 
 
-def main():
-    download_and_extract()
+def main(local_only=False):
+    download_and_extract(local_only)
     convert_to_json()
-    upload_to_cloud(
-        os.path.join(settings.WORKING_DIR, raw_json_name()),
-        "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp")
-    )
     convert_to_csv()
-    upload_to_cloud(
-        settings.INTERMEDIATE_CSV_PATH,
-        "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv.tmp'),
-        make_public=True
-    )
+    if not local_only:
+        upload_to_cloud(
+            os.path.join(settings.WORKING_DIR, raw_json_name()),
+            "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp")
+        )
+        upload_to_cloud(
+            settings.INTERMEDIATE_CSV_PATH,
+            "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv.tmp'),
+            make_public=True
+        )
+    else:
+        print("CSV generated at {}".format(settings.INTERMEDIATE_CSV_PATH))
 
 
 if __name__ == "__main__":
-    main()
+    local_only = sys.argv and sys.argv[1] == 'local'
+    main(local_only)
