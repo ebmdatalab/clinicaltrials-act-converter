@@ -3,6 +3,8 @@ import logging
 import sys
 import traceback
 
+
+import concurrent.futures
 from bigquery import Client
 from bigquery import StorageClient
 from bigquery import TableExporter
@@ -130,33 +132,31 @@ def notify_slack(message):
         )
 
 
+def convert_one_file_to_json(filename, target_file):
+    logger.debug("Converting %s", filename)
+    with open(filename, 'rb') as f:
+        with open(
+                os.path.join(settings.WORKING_DIR, raw_json_name()),
+                'ab') as target_file:
+            try:
+                target_file.write(
+                    json.dumps(
+                        xmltodict.parse(
+                            f,
+                            item_depth=0,
+                            postprocessor=postprocessor)
+                    ) + "\n")
+            except ExpatError:
+                logger.warn("Unable to parse %s", filename)
+
+
 def convert_to_json():
     logger.info("Converting to JSON...")
     dpath = os.path.join(settings.WORKING_DIR, 'NCT*/')
     files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
-    start = datetime.now()
-    completed = 0
-    with open(os.path.join(settings.WORKING_DIR, raw_json_name()), 'w') as f2:
-        for source in files:
-            logger.info("Converting %s", source)
-            with open(source, 'rb') as f:
-                try:
-                    f2.write(
-                        json.dumps(
-                            xmltodict.parse(
-                                f,
-                                item_depth=0,
-                                postprocessor=postprocessor)
-                        ) + "\n")
-                except ExpatError:
-                    logger.warn("Unable to parse %s", source)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        executor.map(convert_one_file_to_json, files)
 
-        completed += 1
-        if completed % 100 == 0:
-            elapsed = datetime.now() - start
-            per_file = elapsed.seconds / completed
-            remaining = int(per_file * (len(files) - completed) / 60.0)
-            logger.info("%s minutes remaining", remaining)
 
 
 def get_env(path):
