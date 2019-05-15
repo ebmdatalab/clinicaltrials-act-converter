@@ -4,7 +4,7 @@ import sys
 import traceback
 
 
-import concurrent.futures
+from multiprocessing import Pool
 from bigquery import Client
 from bigquery import StorageClient
 from bigquery import TableExporter
@@ -166,9 +166,8 @@ def convert_to_json():
     logger.info("Converting to JSON...")
     dpath = os.path.join(settings.WORKING_DIR, 'NCT*/')
     files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        # retrieve all values from the generator to reraise the first exception
-        list(executor.map(convert_one_file_to_json, files))
+    pool = Pool()
+    result = pool.map(convert_one_file_to_json, files)
     combine_outputs(os.path.join(
         settings.WORKING_DIR,
         raw_json_name())
@@ -385,9 +384,10 @@ def convert_to_csv():
     files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
 
     # Process the files in as many processes as possible
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        # retrieve all values from the generator to reraise the first exception
-        list(executor.map(convert_one_file_to_csv, files))
+    pool = Pool()
+    result = pool.map(convert_one_file_to_csv, files)
+
+    # Wait for it to finish
 
     # Write a header to a file that will be first when sorted by glob
     with open(settings.INTERMEDIATE_CSV_PATH + ".pid_0",
