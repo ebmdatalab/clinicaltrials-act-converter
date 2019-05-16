@@ -71,7 +71,7 @@ def upload_to_cloud(source_path, target_path, make_public=False):
 
 
 def document_stream(zip_filename):
-    with zipfile.ZipFile(zip_filename, 'r') as enormous_zipfile:
+    with zipfile.ZipFile(zip_filename, "r") as enormous_zipfile:
         for name in enormous_zipfile.namelist():
             if "NCT" not in name or not name.endswith(".xml"):
                 continue
@@ -155,8 +155,7 @@ def convert_to_json():
     logger.info("Converting to JSON...")
     pool = Pool()
     for name, xmldoc in document_stream(zip_archive()):
-        pool.apply_async(
-            convert_one_file_to_json, (name, xmldoc))
+        pool.apply_async(convert_one_file_to_json, (name, xmldoc))
     pool.close()
     pool.join()
     combine_fragments(raw_json_path())
@@ -258,14 +257,12 @@ def convert_to_csv():
     # Process the files in as many processes as possible
     pool = Pool()
     for name, xmldoc in document_stream(zip_archive()):
-        pool.apply_async(
-            convert_one_file_to_csv, (name, xmldoc))
+        pool.apply_async(convert_one_file_to_csv, (name, xmldoc))
     pool.close()
     pool.join()
     # Write a header to a file that will be first when sorted by glob
     with open(
-            generated_csv_path() +
-            FILE_FRAGMENT_SUFFIX + "0",
+        generated_csv_path() + FILE_FRAGMENT_SUFFIX + "0",
         "w",
         newline="",
         encoding="utf-8",
@@ -503,8 +500,7 @@ def convert_one_file_to_csv(xml_filename, data):
     if td["act_flag"] or td["included_pact_flag"]:
         logger.debug("Writing a record for %s", xml_filename)
         with open(
-                name_fragment(generated_csv_path()),
-                "a", newline="", encoding="utf-8",
+            name_fragment(generated_csv_path()), "a", newline="", encoding="utf-8"
         ) as test_csv:
             writer = csv.DictWriter(test_csv, fieldnames=CSV_HEADERS)
             writer.writerow(convert_bools_to_ints(td))
@@ -645,14 +641,11 @@ def main(local_only=False):
     convert_to_json()
     convert_to_csv()
     if not local_only:
-        upload_to_cloud(
-            raw_json_path(),
-            "{}{}".format(STORAGE_PREFIX, raw_json_name())
-        )
+        upload_to_cloud(raw_json_path(), "{}{}".format(STORAGE_PREFIX, raw_json_name()))
         upload_to_cloud(
             generated_csv_path(),
             "{}{}".format(STORAGE_PREFIX, INTERMEDIATE_CSV_NAME),
-            make_public=True
+            make_public=True,
         )
     else:
         print("CSV generated at {}".format(generated_csv_path()))

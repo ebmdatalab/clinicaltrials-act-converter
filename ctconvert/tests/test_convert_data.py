@@ -24,7 +24,7 @@ def teardown_module(module):
     shutil.rmtree(TMPDIR)
 
 
-@patch('convert_data.TMPDIR', TMPDIR)
+@patch("convert_data.TMPDIR", TMPDIR)
 @patch(CMD_ROOT + ".wget_file", side_effect=wget_copy_fixture)
 @patch(CMD_ROOT + ".upload_to_cloud")
 def test_produces_csv_and_json(self, mock_wget):
@@ -45,9 +45,7 @@ def test_produces_csv_and_json(self, mock_wget):
     output_ldjson = sorted(
         [
             str(json.loads(x))
-            for x in open(
-                    os.path.join(convert_data.raw_json_path())
-            ).readlines()
+            for x in open(os.path.join(convert_data.raw_json_path())).readlines()
         ]
     )
     expected_ldjson = sorted(
