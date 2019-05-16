@@ -647,11 +647,12 @@ def main(local_only=False):
     if not local_only:
         upload_to_cloud(
             raw_json_path(),
-            "{}{}".format(STORAGE_PREFIX, raw_json_name()),
+            "{}{}".format(STORAGE_PREFIX, raw_json_name())
         )
         upload_to_cloud(
             generated_csv_path(),
-            make_public=True,
+            "{}{}".format(STORAGE_PREFIX, INTERMEDIATE_CSV_NAME),
+            make_public=True
         )
     else:
         print("CSV generated at {}".format(generated_csv_path()))
