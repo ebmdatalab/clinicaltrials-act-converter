@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-# Based on https://github.com/GoogleCloudPlatform/python-docs-samples/blob/master/compute/api/create_instance.py
-
-
 import argparse
 import os
 import time
