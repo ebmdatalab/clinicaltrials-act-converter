@@ -53,7 +53,8 @@ def create_instance(compute, project, zone, name):
             ]
         }],
 
-        # Allow the instance to access cloud storage and logging.
+        # Allow the instance to access everything; permissions should
+        # be locked down at a service account leve..
         'serviceAccounts': [{
             'email': 'default',
             'scopes': [
@@ -87,6 +88,10 @@ def delete_instance(compute, project, zone, name):
 
 
 def wait_for_operation(compute, project, zone, operation):
+    """Poll the specified operation until if finishes successfully, or
+    raise an exception for other finish states.
+
+    """
     print('Waiting for operation to finish...')
     while True:
         result = compute.zoneOperations().get(
@@ -104,11 +109,14 @@ def wait_for_operation(compute, project, zone, operation):
 
 
 def wait_for_completion(compute, project, zone, instance):
+    """Poll the instance until it stops, and raise an exception if the
+    startup script recorded a non-zero exit code.
+
+    """
     while True:
         completed_states = ['STOPPED', 'TERMINATED']
         result = compute.instances().get(
             project=project, zone=zone, instance=instance).execute()
-        print(result['status'])
         if result['status'] in completed_states:
             metadata = result['metadata'] and result['metadata']['items']
             status = None
@@ -125,6 +133,13 @@ def wait_for_completion(compute, project, zone, instance):
 
 
 def main(project, zone, instance_name, wait=True):
+    """Start an instance in the specified zone, running
+    `startup_script.sh` on boot.
+
+    If `wait` is true, poll the instance until it stops, and raise an
+    exception if the startup script recorded a non-zero exit code.
+
+    """
     credentials = service_account.Credentials.from_service_account_file(
         os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'])
     compute = build(
@@ -139,8 +154,6 @@ def main(project, zone, instance_name, wait=True):
             print('Deleting instance.')
             operation = delete_instance(compute, project, zone, instance_name)
             wait_for_operation(compute, project, zone, operation['name'])
-
-    print('Creating instance.')
 
     operation = create_instance(compute, project, zone, instance_name)
     wait_for_operation(compute, project, zone, operation['name'])
