@@ -32,7 +32,7 @@ pip3 install -r requirements.txt
 
 echo "Running command"
 cd ctconvert
-python3 load_data.py
+python3 convert_data.py
 
 gcloud compute instances add-metadata $INSTANCE --zone=$ZONE --metadata status=0
 

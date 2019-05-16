@@ -7,16 +7,16 @@ import shutil
 import tempfile
 from datetime import date
 from unittest import mock
-from ctconvert import load_data
+from ctconvert import convert_data
 from unittest.mock import patch
 import pathlib
 
 
-CMD_ROOT = 'ctconvert.load_data'
-
+CMD_ROOT = 'ctconvert.convert_data'
+FIXTURE_ROOT = 'ctconvert/tests/fixtures/'
 
 def wget_copy_fixture(data_file, url):
-    test_zip = 'ctconvert/tests/fixtures/data.zip'
+    test_zip = FIXTURE_ROOT + 'data.zip'
     shutil.copy(test_zip, data_file)
 
 
@@ -26,30 +26,32 @@ class TestSettings(object):
     WORKING_DIR = os.path.join(tempfile.gettempdir(), 'fdaaa_data', 'work')
     INTERMEDIATE_CSV_PATH = os.path.join(tempfile.gettempdir(), 'clinical_trials.csv')
 
+
 settings = TestSettings()
+
 
 @patch(CMD_ROOT + '.wget_file', side_effect=wget_copy_fixture)
 @patch(CMD_ROOT + '.upload_to_cloud')
 @patch(CMD_ROOT + '.settings', settings)
-def test_produces_csv(self, thing):
+def test_produces_csv_and_json(self, mock_wget):
     fdaaa_web_data = os.path.join(tempfile.gettempdir(), 'fdaaa_data')
     pathlib.Path(fdaaa_web_data).mkdir(exist_ok=True)
 
-    args = []
-    opts = {}
-    load_data.main(local_only=True)
+    convert_data.main(local_only=True)
 
-    expected_csv = 'ctconvert/tests/fixtures/expected_trials_data.csv'
+    # Check CSV is as expected
+    expected_csv = FIXTURE_ROOT + 'expected_trials_data.csv'
     with open(settings.INTERMEDIATE_CSV_PATH) as output_file:
         with open(expected_csv) as expected_file:
             results = sorted(list(csv.reader(output_file)))
             expected = sorted(list(csv.reader(expected_file)))
             assert results == expected
 
-    expected_json = 'ctconvert/tests/fixtures/expected_trials_json.json'
+    # Check JSON is as expected
+    expected_json = FIXTURE_ROOT + 'expected_trials_json.json'
     output_ldjson = sorted([str(json.loads(x)) for x in open(
         os.path.join(
             settings.WORKING_DIR,
-            load_data.raw_json_name())).readlines()])
+            convert_data.raw_json_name())).readlines()])
     expected_ldjson = sorted([str(json.loads(x)) for x in open(expected_json).readlines()])
     assert output_ldjson == expected_ldjson
