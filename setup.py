@@ -20,12 +20,12 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        'requests',
-        'google-api-python-client >= 1.7.8',
-        'google-cloud-storage',
-        'xmltodict',
-        'lxml',
-        'bs4',
-        'python-dateutil'
-    ]
+        "requests",
+        "google-api-python-client >= 1.7.8",
+        "google-cloud-storage",
+        "xmltodict",
+        "lxml",
+        "bs4",
+        "python-dateutil",
+    ],
 )

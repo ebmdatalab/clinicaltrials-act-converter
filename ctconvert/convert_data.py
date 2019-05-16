@@ -28,9 +28,7 @@ from ctconvert import settings
 # FILE_FRAGMENT_SUFFIX and sharing a common left stem.
 FILE_FRAGMENT_SUFFIX = ".pid_"
 
-logging.basicConfig(
-    filename='/tmp/clinicaltrials.log',
-    level=logging.DEBUG)
+logging.basicConfig(filename="/tmp/clinicaltrials.log", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +48,7 @@ def combine_fragments(base_file_path):
     with open(base_file_path, "w") as fdst:
         for infile in sorted(glob.glob(base_file_path + FILE_FRAGMENT_SUFFIX + "*")):
             with open(infile, "r") as fsrc:
-                shutil.copyfileobj(fsrc, fdst, 2*30)
+                shutil.copyfileobj(fsrc, fdst, 2 * 30)
             os.remove(infile)
 
 
@@ -62,11 +60,8 @@ def upload_to_cloud(source_path, target_path, make_public=False):
     logger.info("Uploading to {} cloud".format(source_path))
     client = StorageClient()
     bucket = client.get_bucket()
-    blob = bucket.blob(
-        target_path,
-        chunk_size=1024*1024
-    )
-    with open(source_path, 'rb') as f:
+    blob = bucket.blob(target_path, chunk_size=1024 * 1024)
+    with open(source_path, "rb") as f:
         blob.upload_from_file(f)
     if make_public:
         blob.make_public()
@@ -82,8 +77,8 @@ def download_and_extract(local_only=False):
     Setting `local_only` skips the Google Cloud steps.
     """
     container = tempfile.mkdtemp(
-        prefix=settings.STORAGE_PREFIX.rstrip(os.sep),
-        dir=settings.WORKING_VOLUME)
+        prefix=settings.STORAGE_PREFIX.rstrip(os.sep), dir=settings.WORKING_VOLUME
+    )
     destination_file_name = os.path.join(container, "AllPublicXML.zip")
 
     # First check if a recent version exists in cloud - this is faster to download!
@@ -92,33 +87,36 @@ def download_and_extract(local_only=False):
         client = StorageClient()
         bucket = client.get_bucket()
         blob = bucket.get_blob("clinicaltrials/AllPublicXML.zip")
-        if blob and \
-           blob.updated.strftime("%Y-%m-%d") == date.today().strftime("%Y-%m-%d"):
+        if blob and blob.updated.strftime("%Y-%m-%d") == date.today().strftime(
+            "%Y-%m-%d"
+        ):
             blob.download_to_filename(destination_file_name)
             downloaded = True
     if not downloaded:
         # Download and cache in Google Cloud
-        logger.info("Downloading zipfile. This takes at least 30 mins on a fast connection!")
-        url = 'https://clinicaltrials.gov/AllPublicXML.zip'
+        logger.info(
+            "Downloading zipfile. This takes at least 30 mins on a fast connection!"
+        )
+        url = "https://clinicaltrials.gov/AllPublicXML.zip"
         wget_file(destination_file_name, url)
         if not local_only:
-            upload_to_cloud(
-                destination_file_name,
-                "clinicaltrials/AllPublicXML.zip")
+            upload_to_cloud(destination_file_name, "clinicaltrials/AllPublicXML.zip")
     # Can't "wget|unzip" in a pipe because zipfiles have index at end of file.
     subprocess.check_call(
-        ["unzip", "-q", "-o", "-d", settings.WORKING_DIR,
-         destination_file_name])
+        ["unzip", "-q", "-o", "-d", settings.WORKING_DIR, destination_file_name]
+    )
+
 
 # JSON generation
 #################
+
 
 def raw_json_name():
     """The (datestamped) name of the JSON file we generate and store in
     BigQuery on each run
 
     """
-    date = datetime.now().strftime('%Y-%m-%d')
+    date = datetime.now().strftime("%Y-%m-%d")
     return "raw_clincialtrials_json_{}.csv".format(date)
 
 
@@ -127,47 +125,41 @@ def postprocessor(path, key, value):
     possible to import the JSON into bigquery tables.
 
     """
-    if key.startswith('#') or key.startswith('@'):
+    if key.startswith("#") or key.startswith("@"):
         key = key[1:]
-    if key == 'clinical_results':
+    if key == "clinical_results":
         # Arbitrarily long field that we don't need, see #179
-        value = {'truncated_by_postprocessor': True}
+        value = {"truncated_by_postprocessor": True}
     return key, value
 
 
 def convert_one_file_to_json(input_file_path):
     logger.debug("Converting %s", input_file_path)
-    output_file_path = os.path.join(
-        settings.WORKING_DIR,
-        raw_json_name())
+    output_file_path = os.path.join(settings.WORKING_DIR, raw_json_name())
 
     # Write to a fragment named for the current process
     output_file_path = name_fragment(output_file_path)
 
-    with open(input_file_path, 'rb') as f:
-        with open(output_file_path, 'a') as target_file:
+    with open(input_file_path, "rb") as f:
+        with open(output_file_path, "a") as target_file:
             try:
                 target_file.write(
                     json.dumps(
-                        xmltodict.parse(
-                            f,
-                            item_depth=0,
-                            postprocessor=postprocessor)
-                    ) + "\n")
+                        xmltodict.parse(f, item_depth=0, postprocessor=postprocessor)
+                    )
+                    + "\n"
+                )
             except ExpatError:
                 logger.warn("Unable to parse %s", input_file_path)
 
 
 def convert_to_json():
     logger.info("Converting to JSON...")
-    dpath = os.path.join(settings.WORKING_DIR, 'NCT*/')
-    files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
+    dpath = os.path.join(settings.WORKING_DIR, "NCT*/")
+    files = [x for x in sorted(glob.glob(dpath + "*.xml"))]
     pool = Pool()
     result = pool.map(convert_one_file_to_json, files)
-    combine_fragments(os.path.join(
-        settings.WORKING_DIR,
-        raw_json_name())
-    )
+    combine_fragments(os.path.join(settings.WORKING_DIR, raw_json_name()))
 
 
 # CSV generation
@@ -176,48 +168,48 @@ def convert_to_json():
 EFFECTIVE_DATE = date(2017, 1, 18)
 CS = "clinical_study"
 CSV_HEADERS = [
-        "nct_id",
-        "act_flag",
-        "included_pact_flag",
-        "has_results",
-        "pending_results",
-        "pending_data",
-        "has_certificate",
-        "results_due",
-        "start_date",
-        "available_completion_date",
-        "used_primary_completion_date",
-        "defaulted_pcd_flag",
-        "defaulted_cd_flag",
-        "results_submitted_date",
-        "last_updated_date",
-        "certificate_date",
-        "phase",
-        "enrollment",
-        "location",
-        "study_status",
-        "study_type",
-        "primary_purpose",
-        "sponsor",
-        "sponsor_type",
-        "collaborators",
-        "exported",
-        "fda_reg_drug",
-        "fda_reg_device",
-        "is_fda_regulated",
-        "url",
-        "title",
-        "official_title",
-        "brief_title",
-        "discrep_date_status",
-        "late_cert",
-        "defaulted_date",
-        "condition",
-        "condition_mesh",
-        "intervention",
-        "intervention_mesh",
-        "keywords",
-    ]
+    "nct_id",
+    "act_flag",
+    "included_pact_flag",
+    "has_results",
+    "pending_results",
+    "pending_data",
+    "has_certificate",
+    "results_due",
+    "start_date",
+    "available_completion_date",
+    "used_primary_completion_date",
+    "defaulted_pcd_flag",
+    "defaulted_cd_flag",
+    "results_submitted_date",
+    "last_updated_date",
+    "certificate_date",
+    "phase",
+    "enrollment",
+    "location",
+    "study_status",
+    "study_type",
+    "primary_purpose",
+    "sponsor",
+    "sponsor_type",
+    "collaborators",
+    "exported",
+    "fda_reg_drug",
+    "fda_reg_device",
+    "is_fda_regulated",
+    "url",
+    "title",
+    "official_title",
+    "brief_title",
+    "discrep_date_status",
+    "late_cert",
+    "defaulted_date",
+    "condition",
+    "condition_mesh",
+    "intervention",
+    "intervention_mesh",
+    "keywords",
+]
 
 
 def set_fda_reg_dict():
@@ -230,10 +222,9 @@ def set_fda_reg_dict():
     global fda_reg_dict
     fda_reg_dict = {}
     snapshot = gzip.open(
-        os.path.join(
-            os.path.dirname(__file__),
-            'fdaaa_regulatory_snapshot.csv.gz'),
-        'rt')
+        os.path.join(os.path.dirname(__file__), "fdaaa_regulatory_snapshot.csv.gz"),
+        "rt",
+    )
 
     with snapshot as old_fda_reg:
         reader = csv.DictReader(old_fda_reg)
@@ -247,18 +238,20 @@ def convert_to_csv():
     """
     set_fda_reg_dict()
     logger.info("Converting to CSV...")
-    dpath = os.path.join(settings.WORKING_DIR, 'NCT*/')
-    files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
+    dpath = os.path.join(settings.WORKING_DIR, "NCT*/")
+    files = [x for x in sorted(glob.glob(dpath + "*.xml"))]
 
     # Process the files in as many processes as possible
     pool = Pool()
     result = pool.map(convert_one_file_to_csv, files)
 
     # Write a header to a file that will be first when sorted by glob
-    with open(settings.INTERMEDIATE_CSV_PATH + FILE_FRAGMENT_SUFFIX + "0",
-              'w',
-              newline="",
-              encoding="utf-8") as test_csv:
+    with open(
+        settings.INTERMEDIATE_CSV_PATH + FILE_FRAGMENT_SUFFIX + "0",
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as test_csv:
         writer = csv.DictWriter(test_csv, fieldnames=CSV_HEADERS)
         writer.writeheader()
 
@@ -307,9 +300,7 @@ def convert_one_file_to_csv(xml_filename):
         soup.primary_completion_date
     )
 
-    completion_date, td["defaulted_cd_flag"] = str_to_date(
-        soup.completion_date
-    )
+    completion_date, td["defaulted_cd_flag"] = str_to_date(soup.completion_date)
 
     if not primary_completion_date and not completion_date:
         td["available_completion_date"] = None
@@ -353,9 +344,7 @@ def convert_one_file_to_csv(xml_filename):
         and (
             is_fda_reg(td["fda_reg_drug"], td["fda_reg_device"])
             or is_old_fda_regulated(
-                td["is_fda_regulated"],
-                td["fda_reg_drug"],
-                td["fda_reg_device"],
+                td["is_fda_regulated"], td["fda_reg_drug"], td["fda_reg_device"]
             )
         )
         and has_us_loc(locs)
@@ -395,9 +384,7 @@ def convert_one_file_to_csv(xml_filename):
     if (
         (td["act_flag"] == True or td["included_pact_flag"] == True)
         and date.today()
-        > td["available_completion_date"]
-        + relativedelta(years=1)
-        + timedelta(days=30)
+        > td["available_completion_date"] + relativedelta(years=1) + timedelta(days=30)
         and (
             td["has_certificate"] == 0
             or (
@@ -412,15 +399,11 @@ def convert_one_file_to_csv(xml_filename):
     else:
         td["results_due"] = False
 
-    td["results_submitted_date"] = (
-        str_to_date(soup.results_first_submitted)
-    )[0]
+    td["results_submitted_date"] = (str_to_date(soup.results_first_submitted))[0]
 
     td["last_updated_date"] = (str_to_date(soup.last_update_submitted))[0]
 
-    td["certificate_date"] = (
-        str_to_date(soup.disposition_first_submitted)
-    )[0]
+    td["certificate_date"] = (str_to_date(soup.disposition_first_submitted))[0]
 
     td["enrollment"] = t(soup.enrollment)
     if soup.sponsors and soup.sponsors.lead_sponsor:
@@ -429,9 +412,7 @@ def convert_one_file_to_csv(xml_filename):
     else:
         td["sponsor"] = td["sponsor_type"] = None
 
-    td["collaborators"] = dict_or_none(
-        parsed_json, [CS, "sponsors", "collaborator"]
-    )
+    td["collaborators"] = dict_or_none(parsed_json, [CS, "sponsors", "collaborator"])
 
     td["exported"] = t(soup.oversight_info and soup.oversight_info.is_us_export)
 
@@ -459,10 +440,7 @@ def convert_one_file_to_csv(xml_filename):
         "Recruiting",
     ]
     if (
-        (
-            primary_completion_date is None or
-            primary_completion_date < date.today()
-        )
+        (primary_completion_date is None or primary_completion_date < date.today())
         and completion_date is not None
         and completion_date < date.today()
         and td["study_status"] in not_ongoing
@@ -471,7 +449,10 @@ def convert_one_file_to_csv(xml_filename):
     else:
         td["discrep_date_status"] = False
 
-    if td["certificate_date"] is not None and td["available_completion_date"] is not None:
+    if (
+        td["certificate_date"] is not None
+        and td["available_completion_date"] is not None
+    ):
         if td["certificate_date"] > (
             td["available_completion_date"] + relativedelta(years=1)
         ):
@@ -482,15 +463,11 @@ def convert_one_file_to_csv(xml_filename):
         td["late_cert"] = False
 
     if (
-        (
-            td.get("used_primary_completion_date", False)
-            and td.get("defaulted_pcd_flag", False)
-        )
-        or
-        (
-            td.get("used_primary_completion_date", False)
-            and td.get("defaulted_cd_flag", False)
-        )
+        td.get("used_primary_completion_date", False)
+        and td.get("defaulted_pcd_flag", False)
+    ) or (
+        td.get("used_primary_completion_date", False)
+        and td.get("defaulted_cd_flag", False)
     ):
         td["defaulted_date"] = True
     else:
@@ -498,28 +475,29 @@ def convert_one_file_to_csv(xml_filename):
 
     td["condition"] = dict_or_none(parsed_json, [CS, "condition"])
 
-    td["condition_mesh"] = dict_or_none(
-        parsed_json, [CS, "condition_browse"]
-    )
+    td["condition_mesh"] = dict_or_none(parsed_json, [CS, "condition_browse"])
 
     td["intervention"] = dict_or_none(parsed_json, [CS, "intervention"])
 
-    td["intervention_mesh"] = dict_or_none(
-        parsed_json, [CS, "intervention_browse"]
-    )
+    td["intervention_mesh"] = dict_or_none(parsed_json, [CS, "intervention_browse"])
 
     td["keywords"] = dict_or_none(parsed_json, [CS, "keyword"])
 
     if td["act_flag"] or td["included_pact_flag"]:
         logger.debug("Writing a record for %s", xml_filename)
-        with open(name_fragment(settings.INTERMEDIATE_CSV_PATH),
-          'a', newline="", encoding="utf-8") as test_csv:
+        with open(
+            name_fragment(settings.INTERMEDIATE_CSV_PATH),
+            "a",
+            newline="",
+            encoding="utf-8",
+        ) as test_csv:
             writer = csv.DictWriter(test_csv, fieldnames=CSV_HEADERS)
             writer.writerow(convert_bools_to_ints(td))
 
 
 # Helper functions for CSV assenbly
 ###################################
+
 
 def is_covered_phase(phase):
     return phase in [
@@ -600,7 +578,7 @@ def dict_or_none(data, keys):
             data = data[k]
         except KeyError:
             return None
-    return json.dumps(data, separators=(',', ':'))
+    return json.dumps(data, separators=(",", ":"))
 
 
 # Some dates on clinicaltrials.gov are only Month-Year not
@@ -654,17 +632,17 @@ def main(local_only=False):
     if not local_only:
         upload_to_cloud(
             os.path.join(settings.WORKING_DIR, raw_json_name()),
-            "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp")
+            "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp"),
         )
         upload_to_cloud(
             settings.INTERMEDIATE_CSV_PATH,
-            "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv'),
-            make_public=True
+            "{}{}".format(settings.STORAGE_PREFIX, "clinical_trials.csv"),
+            make_public=True,
         )
     else:
         print("CSV generated at {}".format(settings.INTERMEDIATE_CSV_PATH))
 
 
 if __name__ == "__main__":
-    local_only = len(sys.argv) > 1 and sys.argv[1] == 'local'
+    local_only = len(sys.argv) > 1 and sys.argv[1] == "local"
     main(local_only)
