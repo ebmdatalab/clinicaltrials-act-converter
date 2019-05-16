@@ -2,9 +2,8 @@
 import logging
 import sys
 
-
 from multiprocessing import Pool
-from ctconvert.bigquery import StorageClient
+from bigquery import StorageClient
 import xmltodict
 import os
 import subprocess
@@ -22,7 +21,7 @@ from dateutil.relativedelta import relativedelta
 import csv
 from xml.parsers.expat import ExpatError
 
-from ctconvert import settings
+import settings
 
 # When multiprocessing, we write to separate files and combine them
 # later. Associated files are identified by things containing

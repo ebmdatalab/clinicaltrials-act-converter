@@ -5,12 +5,12 @@ import os
 import json
 import shutil
 import tempfile
-from ctconvert import convert_data
+import convert_data
 from unittest.mock import patch
 import pathlib
 
 
-CMD_ROOT = "ctconvert.convert_data"
+CMD_ROOT = "convert_data"
 FIXTURE_ROOT = "ctconvert/tests/fixtures/"
 
 
