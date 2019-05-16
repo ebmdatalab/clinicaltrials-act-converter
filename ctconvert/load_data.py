@@ -5,11 +5,11 @@ import traceback
 
 
 from multiprocessing import Pool
-from bigquery import Client
-from bigquery import StorageClient
-from bigquery import TableExporter
-from bigquery import wait_for_job
-from bigquery import gen_job_name
+from ctconvert.bigquery import Client
+from ctconvert.bigquery import StorageClient
+from ctconvert.bigquery import TableExporter
+from ctconvert.bigquery import wait_for_job
+from ctconvert.bigquery import gen_job_name
 from functools import partial
 import xmltodict
 import os
@@ -35,8 +35,12 @@ import re
 from google.cloud.exceptions import NotFound
 from xml.parsers.expat import ExpatError
 
-import settings
+from ctconvert import settings
 
+# When multiprocessing, we write to separate files and combine them
+# later. Associated files are identified by things containing
+# FILE_FRAGMENT_SUFFIX and sharing a common left stem.
+FILE_FRAGMENT_SUFFIX = ".pid_"
 
 logging.basicConfig(
     filename='/tmp/clinicaltrials.log',
@@ -44,35 +48,53 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def raw_json_name():
-    date = datetime.now().strftime('%Y-%m-%d')
-    return "raw_clincialtrials_json_{}.csv".format(date)
+def name_fragment(base_file_path):
+    """Given a path to a file, return a name based on the current process.
 
+    Such fragments are intended to be recombined to `base_file_path`
+    at a later stage.
 
-def postprocessor(path, key, value):
-    """Convert key names to something bigquery compatible
     """
-    if key.startswith('#') or key.startswith('@'):
-        key = key[1:]
-    if key == 'clinical_results':
-        # Arbitrarily long field that we don't need, see #179
-        value = {'truncated_by_postprocessor': True}
-    return key, value
+    return base_file_path + "{}{}".format(FILE_FRAGMENT_SUFFIX, os.getpid())
+
+
+def combine_fragments(base_file_path):
+    """
+    """
+    with open(base_file_path, "w") as fdst:
+        for infile in sorted(glob.glob(base_file_path + FILE_FRAGMENT_SUFFIX + "*")):
+            with open(infile, "r") as fsrc:
+                shutil.copyfileobj(fsrc, fdst, 2*30)
+            os.remove(infile)
 
 
 def wget_file(target, url):
     subprocess.check_call(["wget", "-q", "-O", target, url])
 
 
-def download_and_extract(local_only):
+def upload_to_cloud(source_path, target_path, make_public=False):
+    logger.info("Uploading to {} cloud".format(source_path))
+    client = StorageClient()
+    bucket = client.get_bucket()
+    blob = bucket.blob(
+        target_path,
+        chunk_size=1024*1024
+    )
+    with open(source_path, 'rb') as f:
+        blob.upload_from_file(f)
+    if make_public:
+        blob.make_public()
+
+
+def download_and_extract(local_only=False):
     """Download zipfile into a temp location, back it up in Cloud Storage,
     and unzip to WORKING_DIR.
 
     If there is a copy from today in Cloud Storage, download from
     there instead (the download from CT.gov is very slow)
+
+    Setting `local_only` skips the Google Cloud steps.
     """
-    logger.info("Downloading. This takes at least 30 mins on a fast connection!")
-    url = 'https://clinicaltrials.gov/AllPublicXML.zip'
     container = tempfile.mkdtemp(
         prefix=settings.STORAGE_PREFIX.rstrip(os.sep),
         dir=settings.WORKING_VOLUME)
@@ -90,6 +112,8 @@ def download_and_extract(local_only):
             downloaded = True
     if not downloaded:
         # Download and cache in Google Cloud
+        logger.info("Downloading zipfile. This takes at least 30 mins on a fast connection!")
+        url = 'https://clinicaltrials.gov/AllPublicXML.zip'
         wget_file(destination_file_name, url)
         if not local_only:
             upload_to_cloud(
@@ -100,48 +124,42 @@ def download_and_extract(local_only):
         ["unzip", "-q", "-o", "-d", settings.WORKING_DIR,
          destination_file_name])
 
+# JSON generation
+#################
 
-def upload_to_cloud(source_path, target_path, make_public=False):
-    # XXX we should periodically delete old ones of these
-    logger.info("Uploading to cloud")
-    client = StorageClient()
-    bucket = client.get_bucket()
-    blob = bucket.blob(
-        target_path,
-        chunk_size=1024*1024
-    )
-    with open(source_path, 'rb') as f:
-        blob.upload_from_file(f)
-    if make_public:
-        blob.make_public()
+def raw_json_name():
+    """The (datestamped) name of the JSON file we generate and store in
+    BigQuery on each run
 
-
-def notify_slack(message):
-    """Posts the message to #general
     """
-    # Set the webhook_url to the one provided by Slack when you create
-    # the webhook at
-    # https://my.slack.com/services/new/incoming-webhook/
-    webhook_url = os.environ['SLACK_GENERAL_POST_KEY']
-    slack_data = {'text': message}
-
-    response = requests.post(webhook_url, json=slack_data)
-    if response.status_code != 200:
-        raise ValueError(
-            'Request to slack returned an error %s, the response is:\n%s'
-            % (response.status_code, response.text)
-        )
+    date = datetime.now().strftime('%Y-%m-%d')
+    return "raw_clincialtrials_json_{}.csv".format(date)
 
 
-def convert_one_file_to_json(filename):
-    logger.debug("Converting %s", filename)
-    with open(filename, 'rb') as f:
-        with open(
-                os.path.join(
-                    settings.WORKING_DIR,
-                    raw_json_name()) +
-                ".pid_{}".format(os.getpid()),
-                'a') as target_file:
+def postprocessor(path, key, value):
+    """Convert key names to something bigquery-compatible, so it is
+    possible to import the JSON into bigquery tables.
+
+    """
+    if key.startswith('#') or key.startswith('@'):
+        key = key[1:]
+    if key == 'clinical_results':
+        # Arbitrarily long field that we don't need, see #179
+        value = {'truncated_by_postprocessor': True}
+    return key, value
+
+
+def convert_one_file_to_json(input_file_path):
+    logger.debug("Converting %s", input_file_path)
+    output_file_path = os.path.join(
+        settings.WORKING_DIR,
+        raw_json_name())
+
+    # Write to a fragment named for the current process
+    output_file_path = name_fragment(output_file_path)
+
+    with open(input_file_path, 'rb') as f:
+        with open(output_file_path, 'a') as target_file:
             try:
                 target_file.write(
                     json.dumps(
@@ -151,15 +169,7 @@ def convert_one_file_to_json(filename):
                             postprocessor=postprocessor)
                     ) + "\n")
             except ExpatError:
-                logger.warn("Unable to parse %s", filename)
-
-
-def combine_outputs(combined_path):
-    with open(combined_path, "w") as fdst:
-        for infile in sorted(glob.glob(combined_path + ".pid_*")):
-            with open(infile, "r") as fsrc:
-                shutil.copyfileobj(fsrc, fdst, 2*30)
-            os.remove(infile)
+                logger.warn("Unable to parse %s", input_file_path)
 
 
 def convert_to_json():
@@ -168,151 +178,17 @@ def convert_to_json():
     files = [x for x in sorted(glob.glob(dpath + '*.xml'))]
     pool = Pool()
     result = pool.map(convert_one_file_to_json, files)
-    combine_outputs(os.path.join(
+    combine_fragments(os.path.join(
         settings.WORKING_DIR,
         raw_json_name())
     )
 
 
-def get_env(path):
-    env = os.environ.copy()
-    with open(path) as e:
-        for k, v in re.findall(r"^export ([A-Z][A-Z0-9_]*)=(\S*)", e.read(), re.MULTILINE):
-            env[k] = v
-    return env
+# CSV generation
+################
 
-
-
-
-###################################
-# Helper functions for CSV assenbly
-###################################
-
-def is_covered_phase(phase):
-    return phase in [
-        "Phase 1/Phase 2",
-        "Phase 2",
-        "Phase 2/Phase 3",
-        "Phase 3",
-        "Phase 4",
-        "N/A",
-    ]
-
-
-def is_not_withdrawn(study_status):
-    return study_status != "Withdrawn"
-
-
-def is_interventional(study_type):
-    return study_type == "Interventional"
-
-
-def is_covered_intervention(intervention_type_list):
-    covered_intervention_type = [
-        "Drug",
-        "Device",
-        "Biological",
-        "Genetic",
-        "Radiation",
-        "Combination Product",
-        "Diagnostic Test",
-    ]
-    a_set = set(covered_intervention_type)
-    b_set = set(intervention_type_list)
-    if a_set & b_set:
-        return True
-    else:
-        return False
-
-
-def is_not_device_feasibility(primary_purpose):
-    return primary_purpose != "Device Feasibility"
-
-
-def is_fda_reg(fda_reg_drug, fda_reg_device):
-    if fda_reg_drug == "Yes" or fda_reg_device == "Yes":
-        return True
-    else:
-        return False
-
-
-def is_old_fda_regulated(is_fda_regulated, fda_reg_drug, fda_reg_device):
-    if (
-        fda_reg_drug is None and fda_reg_device is None
-    ) and is_fda_regulated is not False:
-        return True
-    else:
-        return False
-
-
-def has_us_loc(locs):
-    us_locs = [
-        "United States",
-        "American Samoa",
-        "Guam",
-        "Northern Mariana Islands",
-        "Puerto Rico",
-        "Virgin Islands (U.S.)",
-    ]
-    if locs:
-        for us_loc in us_locs:
-            if us_loc in locs:
-                return True
-    return False
-
-
-def dict_or_none(data, keys):
-    for k in keys:
-        try:
-            data = data[k]
-        except KeyError:
-            return None
-    return json.dumps(data, separators=(',', ':'))
-
-
-# Some dates on clinicaltrials.gov are only Month-Year not
-# Day-Month-Year.  When this happens, we assign them to the last day
-# of the month so our "results due" assessments are conservative
-def str_to_date(datestr):
-    is_defaulted_date = False
-    if datestr is not None:
-        try:
-            parsed_date = datetime.strptime(datestr.text, "%B %d, %Y").date()
-        except ValueError:
-            parsed_date = (
-                datetime.strptime(datestr.text, "%B %Y").date()
-                + relativedelta(months=+1)
-                - timedelta(days=1)
-            )
-            is_defaulted_date = True
-    else:
-        parsed_date = None
-    return (parsed_date, is_defaulted_date)
-
-
-def t(textish):
-    if textish is None:
-        return None
-    return textish.text
-
-
-def does_it_exist(dataloc):
-    if dataloc is None:
-        return False
-    else:
-        return True
-
-
-def convert_bools_to_ints(row):
-    for k, v in row.items():
-        if v is True:
-            v = 1
-            row[k] = v
-        elif v is False:
-            v = 0
-            row[k] = v
-    return row
-
+EFFECTIVE_DATE = date(2017, 1, 18)
+CS = "clinical_study"
 CSV_HEADERS = [
         "nct_id",
         "act_flag",
@@ -357,13 +233,15 @@ CSV_HEADERS = [
         "keywords",
     ]
 
-EFFECTIVE_DATE = date(2017, 1, 18)
-CS = "clinical_study"
 
 def set_fda_reg_dict():
+    """Generate a dictionary for looking up FDA regulation flags from a
+    snapshot of CT.gov at a time when it included such flags.
+
+    """
+    # We use globals as a convenient way to access this from child
+    # processes
     global fda_reg_dict
-    # This is a snapshot of CT.gov at a time when it included FDA
-    # regulation metadata
     fda_reg_dict = {}
     snapshot = gzip.open(
         os.path.join(
@@ -378,6 +256,9 @@ def set_fda_reg_dict():
 
 
 def convert_to_csv():
+    """Convert unzipped CT.gov XML to a CSV format used in the web app.
+
+    """
     set_fda_reg_dict()
     logger.info("Converting to CSV...")
     dpath = os.path.join(settings.WORKING_DIR, 'NCT*/')
@@ -387,10 +268,8 @@ def convert_to_csv():
     pool = Pool()
     result = pool.map(convert_one_file_to_csv, files)
 
-    # Wait for it to finish
-
     # Write a header to a file that will be first when sorted by glob
-    with open(settings.INTERMEDIATE_CSV_PATH + ".pid_0",
+    with open(settings.INTERMEDIATE_CSV_PATH + FILE_FRAGMENT_SUFFIX + "0",
               'w',
               newline="",
               encoding="utf-8") as test_csv:
@@ -398,13 +277,12 @@ def convert_to_csv():
         writer.writeheader()
 
     # combine that header with all other produced outputs
-
-    combine_outputs(settings.INTERMEDIATE_CSV_PATH)
+    combine_fragments(settings.INTERMEDIATE_CSV_PATH)
 
 
 def convert_one_file_to_csv(xml_filename):
     global fda_reg_dict
-    logger.debug("Considering %s", xml_filename)
+    logger.debug("Considering %s for converting to csv", xml_filename)
     with open(xml_filename) as raw_xml:
         xml = raw_xml.read()
         soup = BeautifulSoup(xml, "xml")
@@ -648,14 +526,143 @@ def convert_one_file_to_csv(xml_filename):
 
     if td["act_flag"] or td["included_pact_flag"]:
         logger.debug("Writing a record for %s", xml_filename)
-        with open(settings.INTERMEDIATE_CSV_PATH + ".pid_{}".format(os.getpid()),
+        with open(name_fragment(settings.INTERMEDIATE_CSV_PATH),
           'a', newline="", encoding="utf-8") as test_csv:
             writer = csv.DictWriter(test_csv, fieldnames=CSV_HEADERS)
             writer.writerow(convert_bools_to_ints(td))
 
 
+# Helper functions for CSV assenbly
+###################################
+
+def is_covered_phase(phase):
+    return phase in [
+        "Phase 1/Phase 2",
+        "Phase 2",
+        "Phase 2/Phase 3",
+        "Phase 3",
+        "Phase 4",
+        "N/A",
+    ]
+
+
+def is_not_withdrawn(study_status):
+    return study_status != "Withdrawn"
+
+
+def is_interventional(study_type):
+    return study_type == "Interventional"
+
+
+def is_covered_intervention(intervention_type_list):
+    covered_intervention_type = [
+        "Drug",
+        "Device",
+        "Biological",
+        "Genetic",
+        "Radiation",
+        "Combination Product",
+        "Diagnostic Test",
+    ]
+    a_set = set(covered_intervention_type)
+    b_set = set(intervention_type_list)
+    if a_set & b_set:
+        return True
+    else:
+        return False
+
+
+def is_not_device_feasibility(primary_purpose):
+    return primary_purpose != "Device Feasibility"
+
+
+def is_fda_reg(fda_reg_drug, fda_reg_device):
+    if fda_reg_drug == "Yes" or fda_reg_device == "Yes":
+        return True
+    else:
+        return False
+
+
+def is_old_fda_regulated(is_fda_regulated, fda_reg_drug, fda_reg_device):
+    if (
+        fda_reg_drug is None and fda_reg_device is None
+    ) and is_fda_regulated is not False:
+        return True
+    else:
+        return False
+
+
+def has_us_loc(locs):
+    us_locs = [
+        "United States",
+        "American Samoa",
+        "Guam",
+        "Northern Mariana Islands",
+        "Puerto Rico",
+        "Virgin Islands (U.S.)",
+    ]
+    if locs:
+        for us_loc in us_locs:
+            if us_loc in locs:
+                return True
+    return False
+
+
+def dict_or_none(data, keys):
+    for k in keys:
+        try:
+            data = data[k]
+        except KeyError:
+            return None
+    return json.dumps(data, separators=(',', ':'))
+
+
+# Some dates on clinicaltrials.gov are only Month-Year not
+# Day-Month-Year.  When this happens, we assign them to the last day
+# of the month so our "results due" assessments are conservative
+def str_to_date(datestr):
+    is_defaulted_date = False
+    if datestr is not None:
+        try:
+            parsed_date = datetime.strptime(datestr.text, "%B %d, %Y").date()
+        except ValueError:
+            parsed_date = (
+                datetime.strptime(datestr.text, "%B %Y").date()
+                + relativedelta(months=+1)
+                - timedelta(days=1)
+            )
+            is_defaulted_date = True
+    else:
+        parsed_date = None
+    return (parsed_date, is_defaulted_date)
+
+
+def t(textish):
+    if textish is None:
+        return None
+    return textish.text
+
+
+def does_it_exist(dataloc):
+    if dataloc is None:
+        return False
+    else:
+        return True
+
+
+def convert_bools_to_ints(row):
+    for k, v in row.items():
+        if v is True:
+            v = 1
+            row[k] = v
+        elif v is False:
+            v = 0
+            row[k] = v
+    return row
+
+
 def main(local_only=False):
-    download_and_extract(local_only)
+    download_and_extract(local_only=local_only)
     convert_to_json()
     convert_to_csv()
     if not local_only:
@@ -665,7 +672,7 @@ def main(local_only=False):
         )
         upload_to_cloud(
             settings.INTERMEDIATE_CSV_PATH,
-            "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv.tmp'),
+            "{}{}".format(settings.STORAGE_PREFIX, 'clinical_trials.csv'),
             make_public=True
         )
     else:

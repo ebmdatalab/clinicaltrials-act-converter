@@ -16,7 +16,7 @@ CMD_ROOT = 'ctconvert.load_data'
 
 
 def wget_copy_fixture(data_file, url):
-    test_zip = 'tests/fixtures/data.zip'
+    test_zip = 'ctconvert/tests/fixtures/data.zip'
     shutil.copy(test_zip, data_file)
 
 
@@ -39,14 +39,14 @@ def test_produces_csv(self, thing):
     opts = {}
     load_data.main(local_only=True)
 
-    expected_csv = 'tests/fixtures/expected_trials_data.csv'
+    expected_csv = 'ctconvert/tests/fixtures/expected_trials_data.csv'
     with open(settings.INTERMEDIATE_CSV_PATH) as output_file:
         with open(expected_csv) as expected_file:
             results = sorted(list(csv.reader(output_file)))
             expected = sorted(list(csv.reader(expected_file)))
             assert results == expected
 
-    expected_json = 'tests/fixtures/expected_trials_json.json'
+    expected_json = 'ctconvert/tests/fixtures/expected_trials_json.json'
     output_ldjson = sorted([str(json.loads(x)) for x in open(
         os.path.join(
             settings.WORKING_DIR,
