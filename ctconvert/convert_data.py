@@ -21,12 +21,15 @@ from dateutil.relativedelta import relativedelta
 import csv
 from xml.parsers.expat import ExpatError
 
-import settings
-
 # When multiprocessing, we write to separate files and combine them
 # later. Associated files are identified by things containing
 # FILE_FRAGMENT_SUFFIX and sharing a common left stem.
 FILE_FRAGMENT_SUFFIX = ".pid_"
+
+STORAGE_PREFIX = "clinicaltrials/"
+INTERMEDIATE_CSV_NAME = "clinical_trials.csv"
+
+TMPDIR = tempfile.mkdtemp()
 
 logging.basicConfig(filename="/tmp/clinicaltrials.log", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -76,11 +79,7 @@ def document_stream(zip_filename):
 
 
 def zip_archive():
-    tmpdir = tempfile.mkdtemp(
-        prefix=settings.STORAGE_PREFIX.rstrip(os.sep),
-        dir=settings.WORKING_VOLUME)
-
-    return os.path.join(tmpdir, "AllPublicXML.zip")
+    return os.path.join(TMPDIR, "AllPublicXML.zip")
 
 
 def download_zipfile(local_only=False):
@@ -120,15 +119,6 @@ def download_zipfile(local_only=False):
 #################
 
 
-def raw_json_name():
-    """The (datestamped) name of the JSON file we generate and store in
-    BigQuery on each run
-
-    """
-    date = datetime.now().strftime("%Y-%m-%d")
-    return "raw_clincialtrials_json_{}.csv".format(date)
-
-
 def postprocessor(path, key, value):
     """Convert key names to something bigquery-compatible, so it is
     possible to import the JSON into bigquery tables.
@@ -144,7 +134,7 @@ def postprocessor(path, key, value):
 
 def convert_one_file_to_json(input_file_path, data):
     logger.debug("Converting %s", input_file_path)
-    output_file_path = os.path.join(settings.WORKING_DIR, raw_json_name())
+    output_file_path = raw_json_path()
 
     # Write to a fragment named for the current process
     output_file_path = name_fragment(output_file_path)
@@ -169,7 +159,7 @@ def convert_to_json():
             convert_one_file_to_json, (name, xmldoc))
     pool.close()
     pool.join()
-    combine_fragments(os.path.join(settings.WORKING_DIR, raw_json_name()))
+    combine_fragments(raw_json_path())
 
 
 # CSV generation
@@ -242,6 +232,23 @@ def set_fda_reg_dict():
             fda_reg_dict[d["nct_id"]] = d["is_fda_regulated"]
 
 
+def generated_csv_path():
+    return os.path.join(TMPDIR, INTERMEDIATE_CSV_NAME)
+
+
+def raw_json_name():
+    date = datetime.now().strftime("%Y-%m-%d")
+    return "raw_clincialtrials_json_{}.csv".format(date)
+
+
+def raw_json_path():
+    """The (datestamped) path of the JSON file we generate and store in
+    BigQuery on each run
+
+    """
+    return os.path.join(TMPDIR, raw_json_name())
+
+
 def convert_to_csv():
     """Convert unzipped CT.gov XML to a CSV format used in the web app.
 
@@ -255,10 +262,10 @@ def convert_to_csv():
             convert_one_file_to_csv, (name, xmldoc))
     pool.close()
     pool.join()
-
     # Write a header to a file that will be first when sorted by glob
     with open(
-        settings.INTERMEDIATE_CSV_PATH + FILE_FRAGMENT_SUFFIX + "0",
+            generated_csv_path() +
+            FILE_FRAGMENT_SUFFIX + "0",
         "w",
         newline="",
         encoding="utf-8",
@@ -267,7 +274,7 @@ def convert_to_csv():
         writer.writeheader()
 
     # combine that header with all other produced outputs
-    combine_fragments(settings.INTERMEDIATE_CSV_PATH)
+    combine_fragments(generated_csv_path())
 
 
 def convert_one_file_to_csv(xml_filename, data):
@@ -496,10 +503,8 @@ def convert_one_file_to_csv(xml_filename, data):
     if td["act_flag"] or td["included_pact_flag"]:
         logger.debug("Writing a record for %s", xml_filename)
         with open(
-            name_fragment(settings.INTERMEDIATE_CSV_PATH),
-            "a",
-            newline="",
-            encoding="utf-8",
+                name_fragment(generated_csv_path()),
+                "a", newline="", encoding="utf-8",
         ) as test_csv:
             writer = csv.DictWriter(test_csv, fieldnames=CSV_HEADERS)
             writer.writerow(convert_bools_to_ints(td))
@@ -641,16 +646,15 @@ def main(local_only=False):
     convert_to_csv()
     if not local_only:
         upload_to_cloud(
-            os.path.join(settings.WORKING_DIR, raw_json_name()),
-            "{}{}".format(settings.STORAGE_PREFIX, raw_json_name() + ".tmp"),
+            raw_json_path(),
+            "{}{}".format(STORAGE_PREFIX, raw_json_name()),
         )
         upload_to_cloud(
-            settings.INTERMEDIATE_CSV_PATH,
-            "{}{}".format(settings.STORAGE_PREFIX, "clinical_trials.csv"),
+            generated_csv_path(),
             make_public=True,
         )
     else:
-        print("CSV generated at {}".format(settings.INTERMEDIATE_CSV_PATH))
+        print("CSV generated at {}".format(generated_csv_path()))
 
 
 if __name__ == "__main__":

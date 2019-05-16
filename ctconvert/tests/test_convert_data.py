@@ -11,6 +11,7 @@ import pathlib
 
 
 CMD_ROOT = "convert_data"
+TMPDIR = tempfile.mkdtemp()
 FIXTURE_ROOT = "ctconvert/tests/fixtures/"
 
 
@@ -19,33 +20,21 @@ def wget_copy_fixture(data_file, url):
     shutil.copy(test_zip, data_file)
 
 
-class TestSettings(object):
-    STORAGE_PREFIX = "clinicaltrials_test/"
-    WORKING_VOLUME = os.path.join(tempfile.gettempdir(), "fdaaa_data")
-    WORKING_DIR = os.path.join(tempfile.gettempdir(), "fdaaa_data", "work")
-    INTERMEDIATE_CSV_PATH = os.path.join(tempfile.gettempdir(), "clinical_trials.csv")
-
-
-settings = TestSettings()
-os.makedirs(settings.WORKING_DIR)
-
-
 def teardown_module(module):
-    shutil.rmtree(settings.WORKING_VOLUME)
+    shutil.rmtree(TMPDIR)
 
 
+@patch('convert_data.TMPDIR', TMPDIR)
 @patch(CMD_ROOT + ".wget_file", side_effect=wget_copy_fixture)
-@patch(CMD_ROOT + ".zip_archive", return_value=os.path.join(settings.WORKING_DIR, "AllPublicXML.zip"))
 @patch(CMD_ROOT + ".upload_to_cloud")
-@patch(CMD_ROOT + ".settings", settings)
-def test_produces_csv_and_json(self, mock_archive, mock_wget):
+def test_produces_csv_and_json(self, mock_wget):
     fdaaa_web_data = os.path.join(tempfile.gettempdir(), "fdaaa_data")
     pathlib.Path(fdaaa_web_data).mkdir(exist_ok=True)
     convert_data.main(local_only=True)
 
     # Check CSV is as expected
     expected_csv = FIXTURE_ROOT + "expected_trials_data.csv"
-    with open(settings.INTERMEDIATE_CSV_PATH) as output_file:
+    with open(convert_data.generated_csv_path()) as output_file:
         with open(expected_csv) as expected_file:
             results = sorted(list(csv.reader(output_file)))
             expected = sorted(list(csv.reader(expected_file)))
@@ -57,7 +46,7 @@ def test_produces_csv_and_json(self, mock_archive, mock_wget):
         [
             str(json.loads(x))
             for x in open(
-                os.path.join(settings.WORKING_DIR, convert_data.raw_json_name())
+                    os.path.join(convert_data.raw_json_path())
             ).readlines()
         ]
     )
