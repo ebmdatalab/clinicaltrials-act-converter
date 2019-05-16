@@ -155,7 +155,7 @@ def convert_to_json():
     logger.info("Converting to JSON...")
     pool = Pool()
     for name, xmldoc in document_stream(zip_archive()):
-        pool.apply(
+        pool.apply_async(
             convert_one_file_to_json, (name, xmldoc))
     pool.close()
     pool.join()
@@ -258,7 +258,7 @@ def convert_to_csv():
     # Process the files in as many processes as possible
     pool = Pool()
     for name, xmldoc in document_stream(zip_archive()):
-        pool.apply(
+        pool.apply_async(
             convert_one_file_to_csv, (name, xmldoc))
     pool.close()
     pool.join()
