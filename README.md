@@ -17,6 +17,12 @@ The script at `ctconvert/convert_data.py` contains all the conversion
 logic. The other files facilitate running the conversion in a Google
 Compute Engine instance.
 
+Note that computation is relatively slow and could probably be sped up
+considerably by using `lxml` directly (rather than using
+BeatifulSoup), largely obviating the need for high parallelisation, as
+was done in [this
+spike](https://github.com/chadmiller/clinicaltrials-act-tracker/blob/657574ba3c1c73720425b2e300fb85b050cfa0d0/extraction.py)
+
 # Running
 
 ## Locally

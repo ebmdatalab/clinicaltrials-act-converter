@@ -278,7 +278,6 @@ def convert_one_file_to_csv(xml_filename, data):
     global fda_reg_dict
     logger.debug("Considering %s for converting to csv", xml_filename)
     soup = BeautifulSoup(data, "xml", from_encoding="utf-8")
-    # BS is slow.  Using ElementTree per https://github.com/chadmiller/clinicaltrials-act-tracker/blob/657574ba3c1c73720425b2e300fb85b050cfa0d0/extraction.py would be much faster.
     parsed_json = xmltodict.parse(data)
 
     td = {}
