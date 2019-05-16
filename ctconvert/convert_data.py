@@ -13,6 +13,7 @@ import glob
 import gzip
 import tempfile
 import shutil
+import zipfile
 from bs4 import BeautifulSoup
 from datetime import date
 from datetime import datetime
@@ -67,21 +68,34 @@ def upload_to_cloud(source_path, target_path, make_public=False):
         blob.make_public()
 
 
-def download_and_extract(local_only=False):
-    """Download zipfile into a temp location, back it up in Cloud Storage,
-    and unzip to WORKING_DIR.
+def document_stream(zip_filename):
+    with zipfile.ZipFile(zip_filename, 'r') as enormous_zipfile:
+        for name in enormous_zipfile.namelist():
+            if "NCT" not in name or not name.endswith(".xml"):
+                continue
+            yield name, enormous_zipfile.read(name)
+
+
+def zip_archive():
+    tmpdir = tempfile.mkdtemp(
+        prefix=settings.STORAGE_PREFIX.rstrip(os.sep),
+        dir=settings.WORKING_VOLUME)
+
+    return os.path.join(tmpdir, "AllPublicXML.zip")
+
+
+def download_zipfile(local_only=False):
+    """Download zipfile into a temp location, and back it up in Cloud Storage.
 
     If there is a copy from today in Cloud Storage, download from
     there instead (the download from CT.gov is very slow)
 
     Setting `local_only` skips the Google Cloud steps.
     """
-    container = tempfile.mkdtemp(
-        prefix=settings.STORAGE_PREFIX.rstrip(os.sep), dir=settings.WORKING_VOLUME
-    )
-    destination_file_name = os.path.join(container, "AllPublicXML.zip")
+    destination_file_name = zip_archive()
 
-    # First check if a recent version exists in cloud - this is faster to download!
+    # First check if a recent version exists in cloud - this is much
+    # faster that downloading from CT.gov
     downloaded = False
     if not local_only:
         client = StorageClient()
@@ -101,10 +115,6 @@ def download_and_extract(local_only=False):
         wget_file(destination_file_name, url)
         if not local_only:
             upload_to_cloud(destination_file_name, "clinicaltrials/AllPublicXML.zip")
-    # Can't "wget|unzip" in a pipe because zipfiles have index at end of file.
-    subprocess.check_call(
-        ["unzip", "-q", "-o", "-d", settings.WORKING_DIR, destination_file_name]
-    )
 
 
 # JSON generation
@@ -133,32 +143,33 @@ def postprocessor(path, key, value):
     return key, value
 
 
-def convert_one_file_to_json(input_file_path):
+def convert_one_file_to_json(input_file_path, data):
     logger.debug("Converting %s", input_file_path)
     output_file_path = os.path.join(settings.WORKING_DIR, raw_json_name())
 
     # Write to a fragment named for the current process
     output_file_path = name_fragment(output_file_path)
 
-    with open(input_file_path, "rb") as f:
-        with open(output_file_path, "a") as target_file:
-            try:
-                target_file.write(
-                    json.dumps(
-                        xmltodict.parse(f, item_depth=0, postprocessor=postprocessor)
-                    )
-                    + "\n"
+    with open(output_file_path, "a") as target_file:
+        try:
+            target_file.write(
+                json.dumps(
+                    xmltodict.parse(data, item_depth=0, postprocessor=postprocessor)
                 )
-            except ExpatError:
-                logger.warn("Unable to parse %s", input_file_path)
+                + "\n"
+            )
+        except ExpatError:
+            logger.warn("Unable to parse %s", input_file_path)
 
 
 def convert_to_json():
     logger.info("Converting to JSON...")
-    dpath = os.path.join(settings.WORKING_DIR, "NCT*/")
-    files = [x for x in sorted(glob.glob(dpath + "*.xml"))]
     pool = Pool()
-    result = pool.map(convert_one_file_to_json, files)
+    for name, xmldoc in document_stream(zip_archive()):
+        pool.apply(
+            convert_one_file_to_json, (name, xmldoc))
+    pool.close()
+    pool.join()
     combine_fragments(os.path.join(settings.WORKING_DIR, raw_json_name()))
 
 
@@ -238,12 +249,13 @@ def convert_to_csv():
     """
     set_fda_reg_dict()
     logger.info("Converting to CSV...")
-    dpath = os.path.join(settings.WORKING_DIR, "NCT*/")
-    files = [x for x in sorted(glob.glob(dpath + "*.xml"))]
-
     # Process the files in as many processes as possible
     pool = Pool()
-    result = pool.map(convert_one_file_to_csv, files)
+    for name, xmldoc in document_stream(zip_archive()):
+        pool.apply(
+            convert_one_file_to_csv, (name, xmldoc))
+    pool.close()
+    pool.join()
 
     # Write a header to a file that will be first when sorted by glob
     with open(
@@ -259,13 +271,11 @@ def convert_to_csv():
     combine_fragments(settings.INTERMEDIATE_CSV_PATH)
 
 
-def convert_one_file_to_csv(xml_filename):
+def convert_one_file_to_csv(xml_filename, data):
     global fda_reg_dict
     logger.debug("Considering %s for converting to csv", xml_filename)
-    with open(xml_filename) as raw_xml:
-        xml = raw_xml.read()
-        soup = BeautifulSoup(xml, "xml")
-        parsed_json = xmltodict.parse(xml)
+    soup = BeautifulSoup(data, "xml")
+    parsed_json = xmltodict.parse(data)
 
     td = {}
 
@@ -626,7 +636,7 @@ def convert_bools_to_ints(row):
 
 
 def main(local_only=False):
-    download_and_extract(local_only=local_only)
+    download_zipfile(local_only=local_only)
     convert_to_json()
     convert_to_csv()
     if not local_only:

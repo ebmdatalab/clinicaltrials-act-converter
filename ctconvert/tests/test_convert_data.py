@@ -27,15 +27,20 @@ class TestSettings(object):
 
 
 settings = TestSettings()
+os.makedirs(settings.WORKING_DIR)
+
+
+def teardown_module(module):
+    shutil.rmtree(settings.WORKING_VOLUME)
 
 
 @patch(CMD_ROOT + ".wget_file", side_effect=wget_copy_fixture)
+@patch(CMD_ROOT + ".zip_archive", return_value=os.path.join(settings.WORKING_DIR, "AllPublicXML.zip"))
 @patch(CMD_ROOT + ".upload_to_cloud")
 @patch(CMD_ROOT + ".settings", settings)
-def test_produces_csv_and_json(self, mock_wget):
+def test_produces_csv_and_json(self, mock_archive, mock_wget):
     fdaaa_web_data = os.path.join(tempfile.gettempdir(), "fdaaa_data")
     pathlib.Path(fdaaa_web_data).mkdir(exist_ok=True)
-
     convert_data.main(local_only=True)
 
     # Check CSV is as expected
