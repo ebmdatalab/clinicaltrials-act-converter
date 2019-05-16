@@ -23,7 +23,7 @@ def create_instance(compute, project, zone, name):
     source_disk_image = image_response['selfLink']
 
     # Configure the machine
-    machine_type = "zones/%s/machineTypes/n1-highcpu-4" % zone
+    machine_type = "zones/%s/machineTypes/n1-highcpu-16" % zone
     startup_script = open(
         os.path.join(
             os.path.dirname(__file__), 'startup_script.sh'), 'r').read()
