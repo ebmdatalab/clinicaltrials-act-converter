@@ -5,30 +5,47 @@ ClinicalTrials.gov, and converts it to a CSV suitable for ingestion
 into EBM DataLab's [FDAAA trials tracker](https://github.com/ebmdatalab/clinicaltrials-act-tracker).
 
 It does so by converting the XML to lines of JSON, and then iterating
-over each row and applying custom logic.
+over each row and applying custom logic to select only ACT and pACT
+data from the archive.
 
-The JSON step is time-consuming, but useful to EBM DataLab as it's a
-format that can be imported directly into Google BigQuery. We archive
-the JSON every day so we can audit historic changes.
+It also stores a JSON version of every row of the archive in a single
+file. This is useful to us as it's a format that can be imported
+directly into Google BigQuery for ad-hoc analysis. We archive the JSON
+every day so we can audit historic changes.
 
-The main script at `ctconvert/load_data.py` contains all the
-logic. The other files are there to facilitate running the conversion
-in a Google Compute Engine instance.
+The script at `ctconvert/convert_data.py` contains all the conversion
+logic. The other files facilitate running the conversion in a Google
+Compute Engine instance.
 
 # Running
 
 ## Locally
 
-To run the code locally, install the requirements (`pip install -r requirements.txt`) and then run `python ctconvert/load_data.py local`.
+To run the code locally, install the requirements (`pip install -r
+requirements.txt`) and then run `python ctconvert/convert_data.py
+local`.
 
-Running without the `local` argument will cause the script to attempt to access / store results in Google Cloud Storage.
+## On Google Cloud platform
 
-## In Google Compute Engine
+Running without the `local` argument will cause the script to attempt
+to access / store results in Google Cloud Storage, for which you will
+need to set a `GOOGLE_SERVICE_ACCOUNT_FILE` environment variable and
+corresponding service account (see below).
 
-Set up GCE:
+With a correctly configured service accont, is also possible to run
+the conversion code in a Compute instance:
 
-* Create a service account with Compute Admin and Service Account User roles
-* Download JSON credentials for this service account, and export an environment variable `GOOGLE_SERVICE_ACCOUNT_FILE` containing the path to that file
-* Run `python ctconvert/create_instance.py <projectid> --zone=<zone> --name=<instance>`
+* Run `python ctconvert/create_instance.py <projectid> --zone=<zone>
+  --name=<instance>`
 * This starts an instance and runs `ctconvert/startup_script.sh`
-  * The script installs dependencies and runs `load_data.py`. On script exit, the instance has script exit code written to its `status` metadata, and is then shut down.
+  * The script installs dependencies and runs `convert_data.py`. On
+    script exit, the instance has script exit code written to its
+    `status` metadata, and is then shut down.
+
+## To set up GCS service account
+
+* Create a service account with Compute Admin, Storage Admin and
+  Service Account User roles (or less pemissive roles if possible)
+* Download JSON credentials for this service account, and export an
+  environment variable `GOOGLE_SERVICE_ACCOUNT_FILE` containing the
+  path to that file
