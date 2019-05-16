@@ -1,38 +1,24 @@
 # -*- coding: utf-8 -*-
 import logging
 import sys
-import traceback
 
 
 from multiprocessing import Pool
-from ctconvert.bigquery import Client
 from ctconvert.bigquery import StorageClient
-from ctconvert.bigquery import TableExporter
-from ctconvert.bigquery import wait_for_job
-from ctconvert.bigquery import gen_job_name
-from functools import partial
 import xmltodict
 import os
 import subprocess
 import json
 import glob
 import gzip
-import datetime
 import tempfile
 import shutil
-import requests
-import contextlib
-import os
 from bs4 import BeautifulSoup
-import xmltodict
-import json
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 import csv
-import re
-from google.cloud.exceptions import NotFound
 from xml.parsers.expat import ExpatError
 
 from ctconvert import settings

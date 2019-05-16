@@ -5,8 +5,6 @@ import os
 import json
 import shutil
 import tempfile
-from datetime import date
-from unittest import mock
 from ctconvert import convert_data
 from unittest.mock import patch
 import pathlib
