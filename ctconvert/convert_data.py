@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
+import dateparser
 from dateutil.relativedelta import relativedelta
 import csv
 from xml.parsers.expat import ExpatError
@@ -170,17 +171,25 @@ CSV_HEADERS = [
     "nct_id",
     "act_flag",
     "included_pact_flag",
+	"covered",
+	"inc_in_num",
+	"inc_in_denom",
     "has_results",
     "pending_results",
     "pending_data",
+	"cancelled_now",
     "has_certificate",
     "results_due",
     "start_date",
+	"primary_completion_date",
+	"completion_date",
     "available_completion_date",
     "used_primary_completion_date",
     "defaulted_pcd_flag",
     "defaulted_cd_flag",
     "results_submitted_date",
+	"first_submission_qc",
+	"new_submission_date",
     "last_updated_date",
     "certificate_date",
     "phase",
@@ -305,23 +314,24 @@ def convert_one_file_to_csv(xml_filename, data):
             td["is_fda_regulated"] = None
     except KeyError:
         td["is_fda_regulated"] = None
+		
     td["study_status"] = t(soup.overall_status)
 
     td["start_date"] = (str_to_date(soup.start_date))[0]
 
-    primary_completion_date, td["defaulted_pcd_flag"] = str_to_date(
+    td["primary_completion_date"], td["defaulted_pcd_flag"] = str_to_date(
         soup.primary_completion_date
     )
 
-    completion_date, td["defaulted_cd_flag"] = str_to_date(soup.completion_date)
+    td["completion_date"], td["defaulted_cd_flag"] = str_to_date(soup.completion_date)
 
-    if not primary_completion_date and not completion_date:
+    if not td["primary_completion_date"] and not td["completion_date"]:
         td["available_completion_date"] = None
-    elif completion_date and not primary_completion_date:
-        td["available_completion_date"] = completion_date
+    elif td["completion_date"] and not td["primary_completion_date"]:
+        td["available_completion_date"] = td["completion_date"]
         td["used_primary_completion_date"] = False
     else:
-        td["available_completion_date"] = primary_completion_date
+        td["available_completion_date"] = td["primary_completion_date"]
         td["used_primary_completion_date"] = True
 
     if (
@@ -385,6 +395,9 @@ def convert_one_file_to_csv(xml_filename, data):
         td["included_pact_flag"] = True
     else:
         td["included_pact_flag"] = False
+	
+	if td["act_flag"] == True or td["included_pact_flag"] == True:
+		td["covered"] == True
 
     td["location"] = dict_or_none(parsed_json, [CS, "location_countries"])
 
@@ -393,9 +406,65 @@ def convert_one_file_to_csv(xml_filename, data):
     td["pending_results"] = does_it_exist(soup.pending_results)
 
     td["pending_data"] = dict_or_none(parsed_json, [CS, "pending_results"])
+    
+    if td["pending_data"]:
+        td["first_submission_qc"], submissions = get_dates(td["pending_data"], "submitted")
+        ever_cancelled, cancels = get_dates(td["pending_data"], "submission_canceled")
+        returns = get_date(td["pending_data"],"returned")
+    
+#Cancelled dates will show up as "Unknown" if from before 8 May 2018 per 11 May 2018 update here:
+#https://clinicaltrials.gov/ct2/about-site/new
+#This means any "Unknown" cancellations can be safely ignored as no longer relevant to the current status
+#so if any other dates are after 8 May 2018 so we just remove them. 
+#For any others, we will default them to 7 May 2018, the first day cancelled results started appearing.
+    if cancels and 'Unknown' in cancels:
+        if (
+            (cancels[-1] != 'Unknown' and make_date(cancels[-1]) >= datetime.date(2018,5,8))
+            or (returns and make_date(returns[-1]) >= datetime.date(2018,5,8))
+            or make_date(submissions[-1]) >= datetime.date(2018,5,8)
+        ):
+            cancels = [x for x in cancels if x != 'Unknown']
+        else:
+            cancels = ['May 7, 2018' if x=='Unknown' else x for x in cancels]
 
+#assumes you can't submit twice in 1 day (which, if it does occur, is very rare) 			
+	td["cancelled_now"] = False
+    if cancels and len(cancels) > 0:
+        if returns:
+            if (make_date(cancels[-1]) > make_date(returns[-1]) and
+                make_date(cancels[-1]) > make_date(submissions[-1])):
+                td["cancelled_now"] = True
+            elif make_date(cancels[-1]) == make_date(submissions[-1]) and make_date(submissions[-1]) > make_date(returns[-1]):
+                new_cans = sum(make_date(i) >= make_date(returns[-1]) for i in cancels)
+                new_subs = sum(make_date(i) >= make_date(returns[-1]) for i in submissions)
+                if new_cans == new_subs:
+                    td["cancelled_now"] = True
+        else:
+            if len(cancels) == len(submissions):
+                td["cancelled_now"] = True
+	
+#if the last qc action was an unknown cancellation date, we need to fix that for this next part	
+	if len(cancels) == 0:
+		cancels = ['May 7, 2018']
+		
+#this assumes you won't ever get results returned on the same day as a cancellation
+	if submissions and cancels and not td["cancelled_now"]:
+		last_cancel = make_date(cancels[-1])
+		if returns:
+			last_return = make_date(returns[-1])
+		else:
+			last_return = None
+        
+		if last_return and last_return > last_cancel:
+			ret_after_can = closest_date(last_cancel, returns)
+			td["new_submission_date"] = closest_date(ret_after_can, submissions, future=False)        
+		else:
+			td["new_submission_date"] = last_submission
+	else:
+		td["new_submission_date"] = None
+           
     if (
-        (td["act_flag"] == True or td["included_pact_flag"] == True)
+        td["covered"]
         and date.today()
         > td["available_completion_date"] + relativedelta(years=1) + timedelta(days=30)
         and (
@@ -411,6 +480,18 @@ def convert_one_file_to_csv(xml_filename, data):
         td["results_due"] = True
     else:
         td["results_due"] = False
+	
+	if (td["covered"] and
+		(td["results_due"] or td["has_results"]):
+		td["inc_in_denom"] = True
+	else:
+		td["inc_in_denom"] = False
+
+	if (td["covered"] and
+		(td["results_due"] and (td["has_results"] or (td["pending_results"] and not td["cancelled_now"])))):
+		td["inc_in_num"] = True
+	else:
+		td["inc_in_nom"] = False
 
     td["results_submitted_date"] = (str_to_date(soup.results_first_submitted))[0]
 
@@ -419,6 +500,7 @@ def convert_one_file_to_csv(xml_filename, data):
     td["certificate_date"] = (str_to_date(soup.disposition_first_submitted))[0]
 
     td["enrollment"] = t(soup.enrollment)
+	
     if soup.sponsors and soup.sponsors.lead_sponsor:
         td["sponsor"] = t(soup.sponsors.lead_sponsor.agency)
         td["sponsor_type"] = t(soup.sponsors.lead_sponsor.agency_class)
@@ -437,13 +519,6 @@ def convert_one_file_to_csv(xml_filename, data):
 
     td["title"] = td["official_title"] or td["brief_title"]
 
-    if td["official_title"] is not None:
-        td["title"] = td["official_title"]
-    elif td["official_title"] is None and td["brief_title"] is not None:
-        td["title"] = td["brief_title"]
-    else:
-        td["title"] = None
-
     not_ongoing = [
         "Unknown status",
         "Active, not recruiting",
@@ -453,9 +528,9 @@ def convert_one_file_to_csv(xml_filename, data):
         "Recruiting",
     ]
     if (
-        (primary_completion_date is None or primary_completion_date < date.today())
-        and completion_date is not None
-        and completion_date < date.today()
+        (td["primary_completion_date"] is None or td["primary_completion_date"] < date.today())
+        and td["completion_date"] is not None
+        and td["completion_date"] < date.today()
         and td["study_status"] in not_ongoing
     ):
         td["discrep_date_status"] = True
@@ -479,7 +554,7 @@ def convert_one_file_to_csv(xml_filename, data):
         td.get("used_primary_completion_date", False)
         and td.get("defaulted_pcd_flag", False)
     ) or (
-        td.get("used_primary_completion_date", False)
+        not td.get("used_primary_completion_date", False)
         and td.get("defaulted_cd_flag", False)
     ):
         td["defaulted_date"] = True
@@ -496,7 +571,7 @@ def convert_one_file_to_csv(xml_filename, data):
 
     td["keywords"] = dict_or_none(parsed_json, [CS, "keyword"])
 
-    if td["act_flag"] or td["included_pact_flag"]:
+    if td["covered"]:
         logger.debug("Writing a record for %s", xml_filename)
         with open(
             name_fragment(generated_csv_path()), "a", newline="", encoding="utf-8"
@@ -622,7 +697,49 @@ def does_it_exist(dataloc):
         return False
     else:
         return True
+    
+def make_date(date_string):
+    return dateparser.parse(date_string).date()
 
+def get_dates(field, date_cat):
+    if date_cat == 'submission_canceled':
+        ever_cancelled = False
+    try:
+        date_field = field[date_cat]
+        if type(date_field) == list:
+            dates = date_field
+        elif type(date_field) == str:
+            dates = [date_field]
+        else:
+            raise Exception('Unrecognized Data Type!')
+
+        if date_cat == 'submitted':
+            first_submission = make_date(date_cat[0])
+        elif date_cat == 'submission_canceled':
+            ever_cancelled = True
+    except KeyError:
+        dates = None
+    
+    if date_cat == 'submitted':
+        return first_submission, dates
+    elif date_cat == 'submission_canceled':
+        return ever_cancelled, dates
+    elif date_cat == 'returned':
+        return dates
+
+def closest_date(target_date, list_of_dates, future = True):
+    candidate_dates = []
+    for date in list_of_dates:
+        if future:
+            if make_date(date) - target_date > datetime.timedelta(0):
+                candidate_dates.append(make_date(date))
+        elif not future:
+            if make_date(date) - target_date < datetime.timedelta(0):
+                candidate_dates.append(make_date(date))
+    if future:
+        return min(candidate_dates)
+    elif not future:
+        return max(candidate_dates)
 
 def convert_bools_to_ints(row):
     for k, v in row.items():
