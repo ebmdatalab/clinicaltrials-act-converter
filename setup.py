@@ -21,7 +21,8 @@ setuptools.setup(
     ],
     install_requires=[
         "requests",
-        "google-api-python-client >= 1.7.8",
+        "google-api-python-client",
+        "google-cloud-bigquery",
         "google-cloud-storage",
         "xmltodict",
         "lxml",
