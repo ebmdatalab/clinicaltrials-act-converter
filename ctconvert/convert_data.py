@@ -635,21 +635,30 @@ def convert_bools_to_ints(row):
     return row
 
 
+def get_csv_path():
+    return "{}{}".format(STORAGE_PREFIX, INTERMEDIATE_CSV_NAME)
+
+
 def main(local_only=False):
     download_zipfile(local_only=local_only)
     convert_to_json()
     convert_to_csv()
     if not local_only:
-        upload_to_cloud(raw_json_path(), "{}{}".format(STORAGE_PREFIX, raw_json_name()))
+        json_path = "{}{}".format(STORAGE_PREFIX, raw_json_name())
+        upload_to_cloud(raw_json_path(), json_path)
+        csv_path = get_csv_path()
         upload_to_cloud(
             generated_csv_path(),
-            "{}{}".format(STORAGE_PREFIX, INTERMEDIATE_CSV_NAME),
+            csv_path,
             make_public=True,
         )
+        csv_path = "https://storage.googleapis.com/" + csv_path
     else:
-        print("CSV generated at {}".format(generated_csv_path()))
+        csv_path = generated_csv_path()
+    return csv_path
 
 
 if __name__ == "__main__":
     local_only = len(sys.argv) > 1 and sys.argv[1] == "local"
-    main(local_only)
+    csv_path = main(local_only)
+    print(csv_path)
