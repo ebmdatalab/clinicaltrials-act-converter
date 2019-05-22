@@ -13,7 +13,7 @@ def list_instances(compute, project, zone):
     return result["items"] if "items" in result else None
 
 
-def create_instance(compute, project, zone, name):
+def create_instance(compute, project, zone, name, callback):
     # Get the latest Debian Jessie image.
     image_response = (
         compute.images()
@@ -67,6 +67,12 @@ def create_instance(compute, project, zone, name):
                     # instance upon startup.
                     "key": "startup-script",
                     "value": startup_script,
+                },
+                {
+                    # Startup script is automatically executed by the
+                    # instance upon startup.
+                    "key": "callback",
+                    "value": callback,
                 }
             ]
         },
@@ -131,7 +137,7 @@ def wait_for_completion(compute, project, zone, instance):
         time.sleep(5)
 
 
-def main(project, zone, instance_name, wait=True):
+def main(project, zone, instance_name, callback, wait=True):
     """Start an instance in the specified zone, running
     `startup_script.sh` on boot.
 
@@ -140,7 +146,7 @@ def main(project, zone, instance_name, wait=True):
 
     """
     credentials = service_account.Credentials.from_service_account_file(
-        os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"]
+        os.environ["GOOGLE_SERVICE_ACCOUNT_FILE_FDAAA"]
     )
     compute = build("compute", "v1", credentials=credentials, cache_discovery=False)
 
@@ -155,7 +161,7 @@ def main(project, zone, instance_name, wait=True):
             operation = delete_instance(compute, project, zone, instance_name)
             wait_for_operation(compute, project, zone, operation["name"])
 
-    operation = create_instance(compute, project, zone, instance_name)
+    operation = create_instance(compute, project, zone, instance_name, callback)
     wait_for_operation(compute, project, zone, operation["name"])
     if wait:
         wait_for_completion(compute, project, zone, instance_name)
@@ -170,7 +176,8 @@ if __name__ == "__main__":
         "--zone", default="europe-west2-a", help="Compute Engine zone to deploy to."
     )
     parser.add_argument("--name", default="demo-instance", help="New instance name.")
+    parser.add_argument("--callback", help="Webhook to call on completion")
 
     args = parser.parse_args()
 
-    main(args.project_id, args.zone, args.name)
+    main(args.project_id, args.zone, args.name, args.callback)
