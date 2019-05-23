@@ -706,9 +706,9 @@ def get_dates(field, date_cat):
         ever_cancelled = False
     try:
         date_field = field[date_cat]
-        if type(date_field) == list:
+        if isinstance(date_field,list):
             dates = date_field
-        elif type(date_field) == str:
+        elif isinstance(date_field,str):
             dates = [date_field]
         else:
             raise Exception('Unrecognized Data Type!')
