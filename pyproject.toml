@@ -1,0 +1,20 @@
+[build-system]
+requires = ["flit"]
+build-backend = "flit.buildapi"
+
+[tool.flit.metadata]
+module = "ctconvert"
+author = "EBM DataLab"
+author-email = "tech@ebmdatalab.net"
+home-page = "https://github.com/ebmdatalab/clinicaltrials-act-converter"
+classifiers = ["License :: OSI Approved :: MIT License"]
+requires = [
+        "requests",
+        "google-api-python-client",
+        "google-cloud-bigquery",
+        "google-cloud-storage",
+        "xmltodict",
+        "lxml",
+        "bs4",
+        "python-dateutil"
+         ]
