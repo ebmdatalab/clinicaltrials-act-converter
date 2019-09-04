@@ -4,7 +4,7 @@ set -eE  # same as: `set -o errexit -o errtrace`
 
 INSTANCE=$(curl http://metadata/computeMetadata/v1/instance/name -H "Metadata-Flavor: Google")
 ZONE=$(curl http://metadata/computeMetadata/v1/instance/zone -H "Metadata-Flavor: Google")
-CALLBACK=$(curl http://metadata/computeMetadata/v1/instance/callback -H "Metadata-Flavor: Google")
+CALLBACK=$(curl http://metadata/computeMetadata/v1/instance/attributes/callback -H "Metadata-Flavor: Google")
 
 function shutdown () {
     # Log the error code as instance metadata
@@ -34,7 +34,7 @@ pip3 install -r requirements.txt
 echo "Running command"
 python3 ctconvert/convert_data.py
 
-echo "Running webhook"
+echo "Running webhook $CALLBACK"
 curl "$CALLBACK"
 
 echo "Recording exit status"
