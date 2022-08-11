@@ -17,7 +17,7 @@ def create_instance(compute, project, zone, name, callback):
     # Get the latest Debian Jessie image.
     image_response = (
         compute.images()
-        .getFromFamily(project="debian-cloud", family="debian-9")
+        .getFromFamily(project="debian-cloud", family="debian-10")
         .execute()
     )
     source_disk_image = image_response["selfLink"]
