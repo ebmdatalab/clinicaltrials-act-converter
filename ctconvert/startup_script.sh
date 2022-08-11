@@ -16,7 +16,7 @@ function shutdown () {
 trap shutdown ERR
 
 apt-get update
-apt-get -y install git python3-pip unzip
+apt-get -y install git python3-pip unzip wget
 
 cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
