@@ -16,18 +16,18 @@ function shutdown () {
 trap shutdown ERR
 
 apt-get update
-apt-get -y install git python3-pip python3-venv unzip wget
+apt-get -y install git python3.7 python3.7-venv unzip wget
 
 cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
 cd clinicaltrials-act-converter
 
 echo "Installing requirements"
-python3 -m venv venv
-venv/bin/pip3 install -r requirements.txt
+python3.7 -m venv venv
+venv/bin/pip install -r requirements.txt
 
 echo "Running command"
-venv/bin/python3 ctconvert/convert_data.py
+venv/bin/python ctconvert/convert_data.py
 
 echo "Running webhook $CALLBACK"
 curl "$CALLBACK"
