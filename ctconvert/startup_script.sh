@@ -16,7 +16,7 @@ function shutdown () {
 trap shutdown ERR
 
 apt-get update
-apt-get -y install git python3-pip unzip wget
+apt-get -y install git python3-pip python3-venv unzip wget
 
 cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
@@ -29,10 +29,11 @@ sudo cp fdaaa-converter-log.conf /etc/google-fluentd/config.d/
 sudo service google-fluentd restart
 
 echo "Installing requirements"
-pip3 install -r requirements.txt
+python3 -m venv venv
+venv/bin/pip3 install -r requirements.txt
 
 echo "Running command"
-python3 ctconvert/convert_data.py
+venv/bin/python3 ctconvert/convert_data.py
 
 echo "Running webhook $CALLBACK"
 curl "$CALLBACK"
