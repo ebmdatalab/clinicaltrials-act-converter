@@ -15,14 +15,25 @@ function shutdown () {
 
 trap shutdown ERR
 
+echo "Installing requirements"
 apt-get update
-apt-get -y install git python3.7 python3.7-venv unzip wget
+
+# Install non-Python dependencies
+apt-get -y install git unzip
+
+# Install deadsnakes (and pretende that we're on Ubuntu...)
+apt-get -y install software-properties-common python3-launchpadlib
+add-apt-repository --yes --no-update --ppa ppa:deadsnakes/ppa
+sed --in-place s/bookworm/jammy/ /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-bookworm.list
+apt-get update
+
+# Install Python
+apt-get -y install python3.7 python3.7-venv
 
 cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
 cd clinicaltrials-act-converter
 
-echo "Installing requirements"
 python3.7 -m venv venv
 venv/bin/pip install -r requirements.txt
 
