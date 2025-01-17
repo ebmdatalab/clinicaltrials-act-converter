@@ -22,12 +22,6 @@ cd /tmp
 git clone https://github.com/ebmdatalab/clinicaltrials-act-converter.git
 cd clinicaltrials-act-converter
 
-echo "Setting up logging"
-curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
-sudo bash install-logging-agent.sh
-sudo cp fdaaa-converter-log.conf /etc/google-fluentd/config.d/
-sudo service google-fluentd restart
-
 echo "Installing requirements"
 python3 -m venv venv
 venv/bin/pip3 install -r requirements.txt
