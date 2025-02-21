@@ -14,7 +14,7 @@ bs4==0.0.1
     # via -r requirements.in
 cachetools==3.1.0
     # via google-auth
-certifi==2019.3.9
+certifi==2022.12.7
     # via requests
 chardet==3.0.4
     # via requests
@@ -25,13 +25,13 @@ google-api-core==1.10.0
     #   google-cloud-storage
 google-api-python-client==1.7.8
     # via -r requirements.in
-google-auth-httplib2==0.0.3
-    # via google-api-python-client
 google-auth==1.6.3
     # via
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
+google-auth-httplib2==0.0.3
+    # via google-api-python-client
 google-cloud-bigquery==1.11.2
     # via -r requirements.in
 google-cloud-core==0.29.1
@@ -65,12 +65,12 @@ protobuf==3.7.1
     #   googleapis-common-protos
 py==1.10.0
     # via pytest
-pyasn1-modules==0.2.5
-    # via google-auth
 pyasn1==0.4.5
     # via
     #   pyasn1-modules
     #   rsa
+pyasn1-modules==0.2.5
+    # via google-auth
 pytest==4.5.0
     # via -r requirements.in
 python-dateutil==2.8.0
