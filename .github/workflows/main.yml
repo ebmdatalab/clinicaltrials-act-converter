@@ -20,4 +20,4 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: "Unit tests"
-        run: py.test
+        run: PYTHONPATH=ctconvert pytest
