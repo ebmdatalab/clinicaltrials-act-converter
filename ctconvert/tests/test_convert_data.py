@@ -1,5 +1,5 @@
-"""Integration test for load_data.py script
-"""
+"""Integration test for load_data.py script"""
+
 import csv
 import os
 import json
