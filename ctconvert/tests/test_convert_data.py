@@ -8,6 +8,7 @@ import tempfile
 import convert_data
 from unittest.mock import patch
 import pathlib
+from freezegun import freeze_time
 
 
 CMD_ROOT = "convert_data"
@@ -27,6 +28,7 @@ def teardown_module(module):
 @patch("convert_data.TMPDIR", TMPDIR)
 @patch(CMD_ROOT + ".wget_file", side_effect=wget_copy_fixture)
 @patch(CMD_ROOT + ".upload_to_cloud")
+@freeze_time("2020-01-01")
 def test_produces_csv_and_json(self, mock_wget):
     fdaaa_web_data = os.path.join(tempfile.gettempdir(), "fdaaa_data")
     pathlib.Path(fdaaa_web_data).mkdir(exist_ok=True)
