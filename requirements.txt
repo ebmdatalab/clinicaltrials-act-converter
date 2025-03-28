@@ -60,7 +60,7 @@ more-itertools==7.0.0
     # via pytest
 pluggy==0.11.0
     # via pytest
-protobuf==3.7.1
+protobuf==3.18.3
     # via
     #   google-api-core
     #   google-cloud-bigquery
@@ -93,7 +93,6 @@ six==1.12.0
     #   google-api-python-client
     #   google-auth
     #   google-resumable-media
-    #   protobuf
     #   pytest
     #   python-dateutil
 soupsieve==1.9.1
